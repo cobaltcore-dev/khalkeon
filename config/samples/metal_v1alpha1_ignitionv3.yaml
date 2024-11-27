@@ -1,0 +1,9 @@
+apiVersion: metal.cobaltcore.dev/v1alpha1
+kind: IgnitionV3
+metadata:
+  labels:
+    app.kubernetes.io/name: khalkeon
+    app.kubernetes.io/managed-by: kustomize
+  name: ignitionv3-sample
+spec:
+  # TODO(user): Add fields here

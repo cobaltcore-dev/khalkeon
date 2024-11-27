@@ -7,4 +7,13 @@ layout:
 - go.kubebuilder.io/v4
 projectName: khalkeon
 repo: github.com/cobaltcore-dev/khalkeon
+resources:
+- api:
+    crdVersion: v1
+  controller: true
+  domain: cobaltcore.dev
+  group: metal
+  kind: IgnitionV3
+  path: github.com/cobaltcore-dev/khalkeon/api/v1alpha1
+  version: v1alpha1
 version: "3"

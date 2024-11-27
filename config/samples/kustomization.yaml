@@ -1,0 +1,4 @@
+## Append samples of your project ##
+resources:
+- metal_v1alpha1_ignitionv3.yaml
+# +kubebuilder:scaffold:manifestskustomizesamples
