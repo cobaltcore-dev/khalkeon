@@ -88,11 +88,11 @@ type HTTPHeader struct {
 type HTTPHeaders []HTTPHeader
 
 type Ignition struct {
-	Config   IgnitionConfig `json:"config,omitempty"`
-	Proxy    Proxy          `json:"proxy,omitempty"`
-	Security Security       `json:"security,omitempty"`
-	Timeouts Timeouts       `json:"timeouts,omitempty"`
-	Version  string         `json:"version"`
+	Config   *IgnitionConfig `json:"config,omitempty"`
+	Proxy    Proxy           `json:"proxy,omitempty"`
+	Security Security        `json:"security,omitempty"`
+	Timeouts Timeouts        `json:"timeouts,omitempty"`
+	Version  string          `json:"version"`
 }
 
 type IgnitionConfig struct {

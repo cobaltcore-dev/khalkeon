@@ -23,7 +23,7 @@ import (
 
 // IgnitionV3Spec defines the desired state of IgnitionV3.
 type IgnitionV3Spec struct {
-	TargetSecret v1.LocalObjectReference `json:"targetSecret,omitempty"`
+	TargetSecret *v1.LocalObjectReference `json:"targetSecret,omitempty"`
 
 	Config `json:",inline"`
 }

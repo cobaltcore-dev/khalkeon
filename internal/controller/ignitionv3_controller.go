@@ -27,7 +27,6 @@ import (
 	ignitiontypes "github.com/coreos/ignition/v2/config/v3_5/types"
 
 	corev1 "k8s.io/api/core/v1"
-	v1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	meta "k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -79,32 +78,38 @@ func (r *IgnitionV3Reconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 	}
 
 	//TODO fix recurrence labels and replace
-	ignitions, err := r.getIgnitions(ctx, &ignition.Spec.Ignition.Config.Merge)
-	if err != nil {
-		return ctrl.Result{}, err
-	}
+	if ignition.Spec.Ignition.Config != nil {
+		ignitions, err := r.getIgnitions(ctx, &ignition.Spec.Ignition.Config.Merge)
+		if err != nil {
+			return ctrl.Result{}, err
+		}
 
-	mergedConfigBytes, err := r.mergeIgnitionConfig(ignitions)
-	if err != nil {
-		return ctrl.Result{}, err
-	}
+		mergedConfigBytes, err := r.mergeIgnitionConfig(ignitions)
+		if err != nil {
+			return ctrl.Result{}, err
+		}
 
-	if err := r.reconcileSecret(ctx, ignition, mergedConfigBytes); err != nil {
-		return ctrl.Result{}, err
+		if err := r.reconcileSecret(ctx, ignition, mergedConfigBytes); err != nil {
+			return ctrl.Result{}, err
+		}
 	}
-
 	return ctrl.Result{}, nil
 }
 
 func (r *IgnitionV3Reconciler) setStatus(ctx context.Context, ignition *metalv1alpha1.IgnitionV3) error {
 	ignitionBase := ignition.DeepCopy()
 	condition := metav1.Condition{
-		Type: "Valid configuration",
+		Type:               "Configuration",
+		LastTransitionTime: metav1.Now(),
 	}
 	if _, err := convert(ignition.Spec); err != nil {
-		condition.Status = metav1.ConditionTrue
-	} else {
 		condition.Status = metav1.ConditionFalse
+		condition.Reason = "ConvertionFailed"
+		condition.Message = err.Error()
+	} else {
+		condition.Status = metav1.ConditionTrue
+		condition.Reason = "ConvertionSucceded"
+		condition.Message = "Specyfication is a valid ignition configuration"
 	}
 	if changed := meta.SetStatusCondition(&ignition.Status.Conditions, condition); changed {
 		if err := r.Status().Patch(ctx, ignition, client.MergeFrom(ignitionBase)); err != nil {
@@ -173,9 +178,8 @@ func (r *IgnitionV3Reconciler) mergeIgnitionConfig(ignitions []metalv1alpha1.Ign
 }
 
 func convert(spec metalv1alpha1.IgnitionV3Spec) (ignitiontypes.Config, error) {
-	spec.Ignition.Config.Merge = metav1.LabelSelector{}
-	spec.Ignition.Config.Replace = v1.LocalObjectReference{}
-	spec.TargetSecret = v1.LocalObjectReference{}
+	spec.Ignition.Config = nil
+	spec.TargetSecret = nil
 
 	specByte, err := json.Marshal(spec)
 	if err != nil {
@@ -190,11 +194,11 @@ func convert(spec metalv1alpha1.IgnitionV3Spec) (ignitiontypes.Config, error) {
 }
 
 func (r *IgnitionV3Reconciler) reconcileSecret(ctx context.Context, ignition *metalv1alpha1.IgnitionV3, cofigBytes []byte) error {
-	if ignition.Spec.TargetSecret.Name == "" {
+	if ignition.Spec.TargetSecret == nil {
 		return nil
 	}
 
-	secret, err := r.buildSecret(ctx, ignition, cofigBytes)
+	secret, err := r.buildSecret(ignition, cofigBytes)
 	if err != nil {
 		return err
 	}
@@ -202,7 +206,7 @@ func (r *IgnitionV3Reconciler) reconcileSecret(ctx context.Context, ignition *me
 	return r.createOrUpdate(ctx, secret, ignition)
 }
 
-func (r *IgnitionV3Reconciler) buildSecret(ctx context.Context, ignition *metalv1alpha1.IgnitionV3, cofigBytes []byte) (*corev1.Secret, error) {
+func (r *IgnitionV3Reconciler) buildSecret(ignition *metalv1alpha1.IgnitionV3, cofigBytes []byte) (*corev1.Secret, error) {
 	secret := &corev1.Secret{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      ignition.Spec.TargetSecret.Name,
@@ -221,7 +225,7 @@ func (r *IgnitionV3Reconciler) createOrUpdate(ctx context.Context, secret *corev
 			return fmt.Errorf("couldn't create a secrete %s. Reason: %w", client.ObjectKeyFromObject(secret).String(), err)
 		}
 
-	} else if err == nil && bytes.Compare(foundSecret.Data["config"], secret.Data["config"]) != 0 {
+	} else if err == nil && !bytes.Equal(foundSecret.Data["config"], secret.Data["config"]) {
 		foundSecret.Data = secret.Data
 		if err = r.Update(ctx, foundSecret); err != nil {
 			return fmt.Errorf("couldn't update a secrete %s. Reason: %w", client.ObjectKeyFromObject(secret).String(), err)
