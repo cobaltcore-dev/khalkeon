@@ -99,7 +99,7 @@ func (r *IgnitionV3Reconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 func (r *IgnitionV3Reconciler) setStatus(ctx context.Context, ignition *metalv1alpha1.IgnitionV3) error {
 	ignitionBase := ignition.DeepCopy()
 	condition := metav1.Condition{
-		Type: "valid configuration",
+		Type: "Valid configuration",
 	}
 	if _, err := convert(ignition.Spec); err != nil {
 		condition.Status = metav1.ConditionTrue

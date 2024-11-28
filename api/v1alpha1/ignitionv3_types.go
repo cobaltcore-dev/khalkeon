@@ -17,72 +17,16 @@ limitations under the License.
 package v1alpha1
 
 import (
-	ignitiontypes "github.com/coreos/ignition/v2/config/v3_5/types"
-
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
-
-// EDIT THIS FILE!  THIS IS SCAFFOLDING FOR YOU TO OWN!
-// NOTE: json tags are required.  Any new fields you add must have json tags for the fields to be serialized.
 
 // IgnitionV3Spec defines the desired state of IgnitionV3.
 type IgnitionV3Spec struct {
 	TargetSecret v1.LocalObjectReference `json:"targetSecret,omitempty"`
 
-	// Copied from ignitiontypes.Config
-	Ignition        Ignition                      `json:"ignition"`
-	KernelArguments ignitiontypes.KernelArguments `json:"kernelArguments,omitempty"`
-	Passwd          ignitiontypes.Passwd          `json:"passwd,omitempty"`
-	Storage         ignitiontypes.Storage         `json:"storage,omitempty"`
-	Systemd         ignitiontypes.Systemd         `json:"systemd,omitempty"`
+	Config `json:",inline"`
 }
-
-// Copied from ignitiontypes.Ignition
-type Ignition struct {
-	Config   IgnitionConfig         `json:"config,omitempty"`
-	Proxy    ignitiontypes.Proxy    `json:"proxy,omitempty"`
-	Security ignitiontypes.Security `json:"security,omitempty"`
-	Timeouts ignitiontypes.Timeouts `json:"timeouts,omitempty"`
-	Version  string                 `json:"version"`
-}
-
-// Copied from ignitiontypes.IgnitionConfig
-type IgnitionConfig struct {
-	Merge   metav1.LabelSelector    `json:"merge,omitempty"`
-	Replace v1.LocalObjectReference `json:"replace,omitempty"`
-}
-
-// COMMENT this part is needed as some of subfileds of Storage don't have json tags and CRD yaml can't be generated.
-// However there is still a problem with DeepCopy.
-// // Copied from ignitiontypes.Storage
-// type Storage struct {
-// 	Directories []Directory                `json:"directories,omitempty"`
-// 	Disks       []ignitiontypes.Disk       `json:"disks,omitempty"`
-// 	Files       []File                     `json:"files,omitempty"`
-// 	Filesystems []ignitiontypes.Filesystem `json:"filesystems,omitempty"`
-// 	Links       []Link                     `json:"links,omitempty"`
-// 	Luks        []ignitiontypes.Luks       `json:"luks,omitempty"`
-// 	Raid        []ignitiontypes.Raid       `json:"raid,omitempty"`
-// }
-
-// // Copied from ignitiontypes.Directory
-// type Directory struct {
-// 	ignitiontypes.Node               `json:"node,omitempty"`
-// 	ignitiontypes.DirectoryEmbedded1 `json:"directoryEmbedded1,omitempty"`
-// }
-
-// // Copied from ignitiontypes.File
-// type File struct {
-// 	ignitiontypes.Node          `json:"node,omitempty"`
-// 	ignitiontypes.FileEmbedded1 `json:"fileEmbedded1,omitempty"`
-// }
-
-// // Copied from ignitiontypes.Link
-// type Link struct {
-// 	ignitiontypes.Node          `json:"node,omitempty"`
-// 	ignitiontypes.LinkEmbedded1 `json:"linkEmbedded1,omitempty"`
-// }
 
 // IgnitionV3Status defines the observed state of IgnitionV3.
 type IgnitionV3Status struct {
