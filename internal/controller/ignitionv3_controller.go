@@ -21,6 +21,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"slices"
 	"sort"
 
 	ignitionConfig "github.com/coreos/ignition/v2/config/v3_5"
@@ -30,6 +31,7 @@ import (
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	meta "k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/types"
 
 	// "k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -77,21 +79,22 @@ func (r *IgnitionV3Reconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 		return ctrl.Result{}, err
 	}
 
-	//TODO fix recurrence labels and replace
-	if ignition.Spec.Ignition.Config != nil {
-		ignitions, err := r.getIgnitions(ctx, &ignition.Spec.Ignition.Config.Merge)
-		if err != nil {
-			return ctrl.Result{}, err
-		}
+	if ignition.Spec.TargetSecret == nil {
+		return ctrl.Result{}, nil
+	}
 
-		mergedConfigBytes, err := r.mergeIgnitionConfig(ignitions)
-		if err != nil {
-			return ctrl.Result{}, err
-		}
+	ignitions, err := r.getIgnitions(ctx, ignition)
+	if err != nil {
+		return ctrl.Result{}, err
+	}
 
-		if err := r.reconcileSecret(ctx, ignition, mergedConfigBytes); err != nil {
-			return ctrl.Result{}, err
-		}
+	mergedConfigBytes, err := r.mergeIgnitionConfig(ignitions)
+	if err != nil {
+		return ctrl.Result{}, err
+	}
+
+	if err := r.reconcileSecret(ctx, ignition, mergedConfigBytes); err != nil {
+		return ctrl.Result{}, err
 	}
 	return ctrl.Result{}, nil
 }
@@ -102,7 +105,8 @@ func (r *IgnitionV3Reconciler) setStatus(ctx context.Context, ignition *metalv1a
 		Type:               "Configuration",
 		LastTransitionTime: metav1.Now(),
 	}
-	if _, err := convert(ignition.Spec); err != nil {
+	_, err := convert(ignition.Spec)
+	if err != nil {
 		condition.Status = metav1.ConditionFalse
 		condition.Reason = "ConvertionFailed"
 		condition.Message = err.Error()
@@ -116,45 +120,63 @@ func (r *IgnitionV3Reconciler) setStatus(ctx context.Context, ignition *metalv1a
 			return fmt.Errorf("failed to patch IgnitionV3 status: %w", err)
 		}
 	}
-	return nil
+	return err
 }
 
-// type IgnitionV3List = []metalcobaltcoredevv1alpha1.IgnitionV3
-
-// func Merge(list1, list2 IgnitionV3List) (IgnitionV3List, bool) {
-//  ret := list1
-//  for _, ignition2 := range list2 {
-//      if slices.IndexFunc(list1, func(ignition1 metalcobaltcoredevv1alpha1.IgnitionV3) bool {
-//          return reflect.DeepEqual(ignition1.Spec.Ignition.Config.Merge, ignition2.Spec.Ignition.Config.Merge)
-//      }) == -1 {
-//          ret = append(ret, ignition2)
-//      }
-//  }
-//  return ret, len(ret) > max(len(list1), len(list2))
-// }
-
-func (r *IgnitionV3Reconciler) getIgnitions(ctx context.Context, labelSelector *metav1.LabelSelector) ([]metalv1alpha1.IgnitionV3, error) {
-	selector, err := metav1.LabelSelectorAsSelector(labelSelector)
-	if err != nil {
-		return nil, err
-	}
-	// labels.Eq
-	// req, _ := selector.Requirements()
-	// combinedSelector := labels.NewSelector()
-	ignitionList := metalv1alpha1.IgnitionV3List{}
-	if err := r.List(ctx, &ignitionList, &client.ListOptions{LabelSelector: selector}); err != nil {
-		return nil, client.IgnoreNotFound(err)
-	}
-
-	// for _, ignition := range ignitionList.Items {
-	//  if !reflect.DeepEqual(ignition.Spec.Ignition.Config.Merge, *labelSelector) {
-
-	//  }
-	// }
-	return ignitionList.Items, nil
+// if ignition doesn't match its merge label selectors, it won't be present in a slice?
+func (r *IgnitionV3Reconciler) getIgnitions(ctx context.Context, ignition *metalv1alpha1.IgnitionV3) ([]*metalv1alpha1.IgnitionV3, error) {
+	return r.getIgnitionsRec(ctx, []*metalv1alpha1.IgnitionV3{ignition}, map[types.UID]bool{ignition.GetUID(): true})
 }
 
-func (r *IgnitionV3Reconciler) mergeIgnitionConfig(ignitions []metalv1alpha1.IgnitionV3) ([]byte, error) {
+/*
+This is an example how getIgnitiopnsRec works. Let's assume we have 4 ignitions A B C D with UIDs and label slector that will result in getting list of ignitions as below.
+IGN  UID  LIST
+A     1   B
+B     2   B C D
+C     3
+D     4   A B C D
+In such case there will be 3 execution of getIgnitionsRec with ignitions and collectedUIDs as below
+RUN  IGNS  UIDS
+1     A     1
+2     B     1 2
+3     C D   1 2 3 4
+result will be concatanation of {A}, {B} and {C, D}
+*/
+
+func (r *IgnitionV3Reconciler) getIgnitionsRec(ctx context.Context, ignitions []*metalv1alpha1.IgnitionV3, collectedUIDs map[types.UID]bool) ([]*metalv1alpha1.IgnitionV3, error) {
+	newIgnitions := []*metalv1alpha1.IgnitionV3{}
+	for _, ignition := range ignitions {
+		if ignition.Spec.Ignition.Config == nil {
+			continue
+		}
+		selector, err := metav1.LabelSelectorAsSelector(&ignition.Spec.Ignition.Config.Merge)
+		if err != nil {
+			return nil, err
+		}
+
+		ignitionList := metalv1alpha1.IgnitionV3List{}
+		if err := r.List(ctx, &ignitionList, &client.ListOptions{LabelSelector: selector, Namespace: ignition.Namespace}); err != nil {
+			return nil, client.IgnoreNotFound(err)
+		}
+		for _, matchingIgnition := range ignitionList.Items {
+			if collectedUIDs[matchingIgnition.GetUID()] {
+				continue
+			}
+			newIgnitions = append(newIgnitions, &matchingIgnition)
+			collectedUIDs[matchingIgnition.GetUID()] = true
+		}
+	}
+	if len(newIgnitions) != 0 {
+		newIgntions, err := r.getIgnitionsRec(ctx, newIgnitions, collectedUIDs)
+		if err != nil {
+			return nil, err
+		}
+		ignitions = slices.Concat(ignitions, newIgntions)
+	}
+	return ignitions, nil
+}
+
+func (r *IgnitionV3Reconciler) mergeIgnitionConfig(ignitions []*metalv1alpha1.IgnitionV3) ([]byte, error) {
 	indices := make([]int, len(ignitions))
 	for i := range ignitions {
 		indices[i] = i
@@ -168,7 +190,7 @@ func (r *IgnitionV3Reconciler) mergeIgnitionConfig(ignitions []metalv1alpha1.Ign
 		ignition := ignitions[i] // iterating through ignitions sorted by their name to ensure deterministic output
 		cfg, err := convert(ignition.Spec)
 		if err != nil {
-			return []byte{}, fmt.Errorf("couldn't convert spec of %s. Reason: %v", client.ObjectKeyFromObject(&ignition).String(), err)
+			return []byte{}, fmt.Errorf("couldn't convert spec of %s. Reason: %v", client.ObjectKeyFromObject(ignition).String(), err)
 		}
 
 		mergedSpec = ignitionConfig.Merge(mergedSpec, cfg)

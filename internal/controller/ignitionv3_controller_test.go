@@ -51,8 +51,11 @@ var _ = Describe("IgnitionV3 Controller", func() {
 						Name:      resourceName,
 						Namespace: "default",
 					},
-					// TODO(user): Specify other spec details if needed.
-				}
+					Spec: metalv1alpha1.IgnitionV3Spec{
+						Config: metalv1alpha1.Config{
+							Ignition: metalv1alpha1.Ignition{
+								Version: "3.5.0",
+							}}}}
 				Expect(k8sClient.Create(ctx, resource)).To(Succeed())
 			}
 		})
