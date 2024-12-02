@@ -17,7 +17,6 @@ limitations under the License.
 package controller
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -28,7 +27,6 @@ import (
 	ignitiontypes "github.com/coreos/ignition/v2/config/v3_5/types"
 
 	corev1 "k8s.io/api/core/v1"
-	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	meta "k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
@@ -225,7 +223,10 @@ func (r *IgnitionV3Reconciler) reconcileSecret(ctx context.Context, ignition *me
 		return err
 	}
 
-	return r.createOrUpdate(ctx, secret, ignition)
+	_, err = controllerutil.CreateOrPatch(ctx, r.Client, secret, func() error {
+		return controllerutil.SetOwnerReference(ignition, secret, r.Scheme)
+	})
+	return err
 }
 
 func (r *IgnitionV3Reconciler) buildSecret(ignition *metalv1alpha1.IgnitionV3, cofigBytes []byte) (*corev1.Secret, error) {
@@ -237,25 +238,6 @@ func (r *IgnitionV3Reconciler) buildSecret(ignition *metalv1alpha1.IgnitionV3, c
 		Data: map[string][]byte{"config": cofigBytes},
 	}
 	return secret, nil
-}
-
-func (r *IgnitionV3Reconciler) createOrUpdate(ctx context.Context, secret *corev1.Secret, owner metav1.Object) error {
-	foundSecret := &corev1.Secret{}
-	if err := r.Get(ctx, client.ObjectKeyFromObject(secret), foundSecret); apierrors.IsNotFound(err) {
-		controllerutil.SetOwnerReference(owner, secret, r.Scheme)
-		if err = r.Create(ctx, secret); err != nil {
-			return fmt.Errorf("couldn't create a secrete %s. Reason: %w", client.ObjectKeyFromObject(secret).String(), err)
-		}
-
-	} else if err == nil && !bytes.Equal(foundSecret.Data["config"], secret.Data["config"]) {
-		foundSecret.Data = secret.Data
-		if err = r.Update(ctx, foundSecret); err != nil {
-			return fmt.Errorf("couldn't update a secrete %s. Reason: %w", client.ObjectKeyFromObject(secret).String(), err)
-		}
-	} else {
-		return err
-	}
-	return nil
 }
 
 // SetupWithManager sets up the controller with the Manager.
