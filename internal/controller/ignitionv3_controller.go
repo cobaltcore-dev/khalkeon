@@ -108,11 +108,11 @@ func (r *IgnitionV3Reconciler) setStatus(ctx context.Context, ignition *metalv1a
 	_, err := convert(ignition.Spec)
 	if err != nil {
 		condition.Status = metav1.ConditionFalse
-		condition.Reason = "ConvertionFailed"
+		condition.Reason = "ConversionFailed"
 		condition.Message = err.Error()
 	} else {
 		condition.Status = metav1.ConditionTrue
-		condition.Reason = "ConvertionSucceded"
+		condition.Reason = "ConversionSucceded"
 		condition.Message = "Specyfication is a valid ignition configuration"
 	}
 	if changed := meta.SetStatusCondition(&ignition.Status.Conditions, condition); changed {
