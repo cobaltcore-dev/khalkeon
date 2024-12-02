@@ -218,26 +218,22 @@ func (r *IgnitionV3Reconciler) reconcileSecret(ctx context.Context, ignition *me
 		return nil
 	}
 
-	secret, err := r.buildSecret(ignition, cofigBytes)
-	if err != nil {
-		return err
-	}
+	secret := r.buildSecret(ignition, cofigBytes)
 
-	_, err = controllerutil.CreateOrPatch(ctx, r.Client, secret, func() error {
+	_, err := controllerutil.CreateOrPatch(ctx, r.Client, secret, func() error {
 		return controllerutil.SetOwnerReference(ignition, secret, r.Scheme)
 	})
 	return err
 }
 
-func (r *IgnitionV3Reconciler) buildSecret(ignition *metalv1alpha1.IgnitionV3, cofigBytes []byte) (*corev1.Secret, error) {
-	secret := &corev1.Secret{
+func (r *IgnitionV3Reconciler) buildSecret(ignition *metalv1alpha1.IgnitionV3, cofigBytes []byte) *corev1.Secret {
+	return &corev1.Secret{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      ignition.Spec.TargetSecret.Name,
 			Namespace: ignition.Namespace,
 		},
 		Data: map[string][]byte{"config": cofigBytes},
 	}
-	return secret, nil
 }
 
 // SetupWithManager sets up the controller with the Manager.
