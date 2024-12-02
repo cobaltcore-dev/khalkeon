@@ -1,6 +1,6 @@
 module github.com/cobaltcore-dev/khalkeon
 
-go 1.22.0
+go 1.23
 
 require (
 	github.com/coreos/ignition/v2 v2.20.0
