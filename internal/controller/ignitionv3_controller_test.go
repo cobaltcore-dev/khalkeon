@@ -17,71 +17,81 @@ limitations under the License.
 package controller
 
 import (
-	"context"
-
-	. "github.com/onsi/ginkgo/v2"
-	. "github.com/onsi/gomega"
-	"k8s.io/apimachinery/pkg/api/errors"
-	"k8s.io/apimachinery/pkg/types"
-	"sigs.k8s.io/controller-runtime/pkg/reconcile"
-
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"fmt"
 
 	metalv1alpha1 "github.com/cobaltcore-dev/khalkeon/api/v1alpha1"
+	. "github.com/onsi/ginkgo/v2"
+	. "github.com/onsi/gomega"
+	v1 "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/types"
+	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 )
 
 var _ = Describe("IgnitionV3 Controller", func() {
 	Context("When reconciling a resource", func() {
-		const resourceName = "test-resource"
+		const (
+			name       = "test-ignition"
+			secretName = "test-ignition-secret"
+		)
 
-		ctx := context.Background()
-
-		typeNamespacedName := types.NamespacedName{
-			Name:      resourceName,
-			Namespace: "default", // TODO(user):Modify as needed
-		}
-		ignitionv3 := &metalv1alpha1.IgnitionV3{}
+		var (
+			ign *metalv1alpha1.IgnitionV3
+			nn  types.NamespacedName
+		)
 
 		BeforeEach(func() {
-			By("creating the custom resource for the Kind IgnitionV3")
-			err := k8sClient.Get(ctx, typeNamespacedName, ignitionv3)
-			if err != nil && errors.IsNotFound(err) {
-				resource := &metalv1alpha1.IgnitionV3{
-					ObjectMeta: metav1.ObjectMeta{
-						Name:      resourceName,
-						Namespace: "default",
-					},
-					Spec: metalv1alpha1.IgnitionV3Spec{
-						Config: metalv1alpha1.Config{
-							Ignition: metalv1alpha1.Ignition{
-								Version: "3.5.0",
-							}}}}
-				Expect(k8sClient.Create(ctx, resource)).To(Succeed())
-			}
+			ign = &metalv1alpha1.IgnitionV3{ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: namespace}}
+			nn = client.ObjectKeyFromObject(ign)
 		})
 
 		AfterEach(func() {
-			// TODO(user): Cleanup logic after each test, like removing the resource instance.
-			resource := &metalv1alpha1.IgnitionV3{}
-			err := k8sClient.Get(ctx, typeNamespacedName, resource)
-			Expect(err).NotTo(HaveOccurred())
-
-			By("Cleanup the specific resource instance IgnitionV3")
-			Expect(k8sClient.Delete(ctx, resource)).To(Succeed())
+			Expect(k8sClient.Delete(ctx, ign)).To(Succeed())
 		})
-		It("should successfully reconcile the resource", func() {
-			By("Reconciling the created resource")
-			controllerReconciler := &IgnitionV3Reconciler{
-				Client: k8sClient,
-				Scheme: k8sClient.Scheme(),
-			}
 
-			_, err := controllerReconciler.Reconcile(ctx, reconcile.Request{
-				NamespacedName: typeNamespacedName,
+		// When("Igntion doesn't have target secret", func() {
+		// 	It("when configuration is valid, should update status ", func() {
+		// 		ign.Spec.Config.Ignition.Version = "3.5.0"
+		// 		Expect(k8sClient.Create(ctx, ign)).To(Succeed())
+
+		// 		controller := &IgnitionV3Reconciler{Client: k8sClient, Scheme: k8sClient.Scheme()}
+		// 		_, err := controller.Reconcile(ctx, reconcile.Request{NamespacedName: nn})
+		// 		Expect(err).NotTo(HaveOccurred())
+
+		// 		Expect(k8sClient.Get(ctx, nn, ign)).To(Succeed())
+		// 		Expect(meta.IsStatusConditionTrue(ign.Status.Conditions, metalv1alpha1.ConditionType)).To(BeTrue())
+		// 	})
+
+		// 	It("when configuration is invalid, should update status ", func() {
+		// 		ign.Spec.Config.Ignition.Version = "invalid"
+		// 		Expect(k8sClient.Create(ctx, ign)).To(Succeed())
+
+		// 		controller := &IgnitionV3Reconciler{Client: k8sClient, Scheme: k8sClient.Scheme()}
+		// 		_, err := controller.Reconcile(ctx, reconcile.Request{NamespacedName: nn})
+		// 		Expect(err).NotTo(HaveOccurred())
+
+		// 		Expect(k8sClient.Get(ctx, nn, ign)).To(Succeed())
+		// 		Expect(meta.IsStatusConditionTrue(ign.Status.Conditions, metalv1alpha1.ConditionType)).To(BeFalse())
+		// 	})
+		// })
+
+		When("Igntion has target secret", func() {
+			BeforeEach(func() {
+				ign.Spec.Config.Ignition.Version = "3.5.0"
+				ign.Spec.TargetSecret = &v1.LocalObjectReference{Name: secretName}
 			})
-			Expect(err).NotTo(HaveOccurred())
-			// TODO(user): Add more specific assertions depending on your controller's reconciliation logic.
-			// Example: If you expect a certain status condition after reconciliation, verify it here.
+
+			It("when merge is empty, should create a secret with single config", func() {
+				fmt.Println("test create", nn, "\""+ign.Namespace+"\"") //test create test-namespace/test-ignition "test-namespace"
+				Expect(k8sClient.Create(ctx, ign)).To(Succeed())
+
+				controller := &IgnitionV3Reconciler{Client: k8sClient, Scheme: k8sClient.Scheme()}
+				_, err := controller.Reconcile(ctx, reconcile.Request{NamespacedName: nn})
+				Expect(err).NotTo(HaveOccurred())
+
+				Expect(k8sClient.Get(ctx, nn, ign)).To(Succeed())
+			})
 		})
 	})
 })

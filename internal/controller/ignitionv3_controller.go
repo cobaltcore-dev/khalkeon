@@ -27,7 +27,7 @@ import (
 	ignitiontypes "github.com/coreos/ignition/v2/config/v3_5/types"
 
 	corev1 "k8s.io/api/core/v1"
-	meta "k8s.io/apimachinery/pkg/api/meta"
+	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 
@@ -68,13 +68,14 @@ func (r *IgnitionV3Reconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 	if err := r.Get(ctx, req.NamespacedName, ignition); err != nil {
 		return ctrl.Result{}, client.IgnoreNotFound(err)
 	}
+	fmt.Println("reconcile", req.NamespacedName, "\""+ignition.Namespace+"\"") //reconcile test-namespace/test-ignition ""
 
 	if !ignition.DeletionTimestamp.IsZero() {
 		return ctrl.Result{}, nil
 	}
 
 	if err := r.setStatus(ctx, ignition); err != nil {
-		return ctrl.Result{}, err
+		return ctrl.Result{}, fmt.Errorf("couldn't set status: %w", err)
 	}
 
 	if ignition.Spec.TargetSecret == nil {
@@ -83,16 +84,16 @@ func (r *IgnitionV3Reconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 
 	ignitions, err := r.getIgnitions(ctx, ignition)
 	if err != nil {
-		return ctrl.Result{}, err
+		return ctrl.Result{}, fmt.Errorf("couldn't get ignitions: %w", err)
 	}
 
 	mergedConfigBytes, err := r.mergeIgnitionConfig(ignitions)
 	if err != nil {
-		return ctrl.Result{}, err
+		return ctrl.Result{}, fmt.Errorf("couldn't merge ignitions: %w", err)
 	}
 
 	if err := r.reconcileSecret(ctx, ignition, mergedConfigBytes); err != nil {
-		return ctrl.Result{}, err
+		return ctrl.Result{}, fmt.Errorf("couldn't reconcile secret: %w", err)
 	}
 	return ctrl.Result{}, nil
 }
@@ -100,7 +101,7 @@ func (r *IgnitionV3Reconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 func (r *IgnitionV3Reconciler) setStatus(ctx context.Context, ignition *metalv1alpha1.IgnitionV3) error {
 	ignitionBase := ignition.DeepCopy()
 	condition := metav1.Condition{
-		Type:               "Configuration",
+		Type:               metalv1alpha1.ConditionType,
 		LastTransitionTime: metav1.Now(),
 	}
 	_, err := convert(ignition.Spec)
@@ -118,7 +119,7 @@ func (r *IgnitionV3Reconciler) setStatus(ctx context.Context, ignition *metalv1a
 			return fmt.Errorf("failed to patch IgnitionV3 status: %w", err)
 		}
 	}
-	return err
+	return nil
 }
 
 // if ignition doesn't match its merge label selectors, it won't be present in a slice?
