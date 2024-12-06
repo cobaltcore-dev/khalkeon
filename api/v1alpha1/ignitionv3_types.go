@@ -41,7 +41,7 @@ const ConditionType = "Configuration"
 
 // +kubebuilder:object:root=true
 // +kubebuilder:subresource:status
-// +kubebuilder:resource:scope=Cluster
+// +kubebuilder:resource:scope=Namespaced
 
 // IgnitionV3 is the Schema for the ignitionv3s API.
 type IgnitionV3 struct {
