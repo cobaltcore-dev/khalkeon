@@ -30,7 +30,8 @@ import (
 var _ = Describe("IgnitionV3 Controller", func() {
 	Context("When reconciling a resource", func() {
 		const (
-			name = "test-ignition"
+			name               = "test-ignition"
+			validConfigVersion = "3.5.0"
 		)
 
 		var (
@@ -48,7 +49,7 @@ var _ = Describe("IgnitionV3 Controller", func() {
 
 		When("Igntion doesn't have target secret", func() {
 			It("when configuration is valid, should update status ", func() {
-				ign.Spec.Config.Ignition.Version = "3.5.0"
+				ign.Spec.Config.Ignition.Version = validConfigVersion
 				Expect(k8sClient.Create(ctx, ign)).To(Succeed())
 
 				controller := &IgnitionV3Reconciler{Client: k8sClient, Scheme: k8sClient.Scheme()}
@@ -87,7 +88,7 @@ var _ = Describe("IgnitionV3 Controller", func() {
 			)
 
 			BeforeEach(func() {
-				ign.Spec.Config.Ignition.Version = "3.5.0"
+				ign.Spec.Config.Ignition.Version = validConfigVersion
 				ign.Spec.KernelArguments.ShouldExist = []metalv1alpha1.KernelArgument{"ignition-1 value"}
 				ign.Spec.TargetSecret = &corev1.LocalObjectReference{Name: secretName}
 				labels := map[string]string{"merge": "true"}
@@ -97,7 +98,7 @@ var _ = Describe("IgnitionV3 Controller", func() {
 				secret = &corev1.Secret{ObjectMeta: metav1.ObjectMeta{Name: secretName, Namespace: namespace}}
 
 				ign2 = &metalv1alpha1.IgnitionV3{ObjectMeta: metav1.ObjectMeta{Name: name2, Namespace: namespace}}
-				ign2.Spec.Config.Ignition.Version = "3.5.0"
+				ign2.Spec.Config.Ignition.Version = validConfigVersion
 				ign2.Spec.KernelArguments.ShouldNotExist = []metalv1alpha1.KernelArgument{"ignition-2 value"}
 				ign2.Labels = labels
 				recLabels := map[string]string{"merge": "recurrently"}
@@ -105,15 +106,15 @@ var _ = Describe("IgnitionV3 Controller", func() {
 				ign2.Spec.Config.Ignition.Config.Merge = metav1.LabelSelector{MatchLabels: recLabels} // link to ign3
 
 				ign3 = &metalv1alpha1.IgnitionV3{ObjectMeta: metav1.ObjectMeta{Name: name3, Namespace: namespace}}
-				ign3.Spec.Config.Ignition.Version = "3.5.0"
+				ign3.Spec.Config.Ignition.Version = validConfigVersion
 				ign3.Spec.Passwd.Groups = []metalv1alpha1.PasswdGroup{{Name: "ignition-3 value"}}
 				ign3.Labels = recLabels
 			})
 
 			AfterEach(func() {
 				Expect(k8sClient.Delete(ctx, secret)).To(Succeed())
-				k8sClient.Delete(ctx, ign2)
-				k8sClient.Delete(ctx, ign3)
+				_ = k8sClient.Delete(ctx, ign2)
+				_ = k8sClient.Delete(ctx, ign3)
 			})
 
 			It("when merge is empty, should create a secret with single config", func() {
