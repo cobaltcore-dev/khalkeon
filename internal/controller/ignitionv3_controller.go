@@ -41,6 +41,8 @@ import (
 	metalv1alpha1 "github.com/cobaltcore-dev/khalkeon/api/v1alpha1"
 )
 
+const secretConfigData = "config"
+
 // IgnitionV3Reconciler reconciles a IgnitionV3 object
 type IgnitionV3Reconciler struct {
 	client.Client
@@ -68,7 +70,6 @@ func (r *IgnitionV3Reconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 	if err := r.Get(ctx, req.NamespacedName, ignition); err != nil {
 		return ctrl.Result{}, client.IgnoreNotFound(err)
 	}
-	fmt.Println("reconcile", req.NamespacedName, "\""+ignition.Namespace+"\"") //reconcile test-namespace/test-ignition ""
 
 	if !ignition.DeletionTimestamp.IsZero() {
 		return ctrl.Result{}, nil
@@ -233,7 +234,7 @@ func (r *IgnitionV3Reconciler) buildSecret(ignition *metalv1alpha1.IgnitionV3, c
 			Name:      ignition.Spec.TargetSecret.Name,
 			Namespace: ignition.Namespace,
 		},
-		Data: map[string][]byte{"config": cofigBytes},
+		Data: map[string][]byte{secretConfigData: cofigBytes},
 	}
 }
 
