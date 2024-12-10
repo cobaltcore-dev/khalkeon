@@ -112,8 +112,8 @@ func (r *IgnitionV3Reconciler) setStatus(ctx context.Context, ignition *metalv1a
 		condition.Message = err.Error()
 	} else {
 		condition.Status = metav1.ConditionTrue
-		condition.Reason = "ConversionSucceded"
-		condition.Message = "Specyfication is a valid ignition configuration"
+		condition.Reason = "ConversionSucceeded"
+		condition.Message = "Specification is a valid ignition configuration"
 	}
 	if changed := meta.SetStatusCondition(&ignition.Status.Conditions, condition); changed {
 		if err := r.Status().Patch(ctx, ignition, client.MergeFrom(ignitionBase)); err != nil {
@@ -129,7 +129,7 @@ func (r *IgnitionV3Reconciler) getIgnitions(ctx context.Context, ignition *metal
 }
 
 /*
-This is an example how getIgnitiopnsRec works. Let's assume we have 4 ignitions A B C D with UIDs and label slector that will result in getting list of ignitions as below.
+This is an example how getIgnitionsRec works. Let's assume we have 4 ignitions A B C D with UIDs and label selector that will result in getting list of ignitions as below.
 IGN  UID  LIST
 A     1   B
 B     2   B C D
@@ -140,7 +140,7 @@ RUN  IGNS  UIDS
 1     A     1
 2     B     1 2
 3     C D   1 2 3 4
-result will be concatanation of {A}, {B} and {C, D}
+result will be concatenation of {A}, {B} and {C, D}
 */
 
 func (r *IgnitionV3Reconciler) getIgnitionsRec(ctx context.Context, ignitions []*metalv1alpha1.IgnitionV3, collectedUIDs map[types.UID]bool) ([]*metalv1alpha1.IgnitionV3, error) {
@@ -167,11 +167,11 @@ func (r *IgnitionV3Reconciler) getIgnitionsRec(ctx context.Context, ignitions []
 		}
 	}
 	if len(newIgnitions) != 0 {
-		newIgntions, err := r.getIgnitionsRec(ctx, newIgnitions, collectedUIDs)
+		newIgnitions, err := r.getIgnitionsRec(ctx, newIgnitions, collectedUIDs)
 		if err != nil {
 			return nil, err
 		}
-		ignitions = slices.Concat(ignitions, newIgntions)
+		ignitions = slices.Concat(ignitions, newIgnitions)
 	}
 	return ignitions, nil
 }
@@ -215,12 +215,12 @@ func convert(spec metalv1alpha1.IgnitionV3Spec) (ignitiontypes.Config, error) {
 	return cfg, nil
 }
 
-func (r *IgnitionV3Reconciler) reconcileSecret(ctx context.Context, ignition *metalv1alpha1.IgnitionV3, cofigBytes []byte) error {
+func (r *IgnitionV3Reconciler) reconcileSecret(ctx context.Context, ignition *metalv1alpha1.IgnitionV3, configBytes []byte) error {
 	if ignition.Spec.TargetSecret == nil {
 		return nil
 	}
 
-	secret := r.buildSecret(ignition, cofigBytes)
+	secret := r.buildSecret(ignition, configBytes)
 
 	_, err := controllerutil.CreateOrPatch(ctx, r.Client, secret, func() error {
 		return controllerutil.SetOwnerReference(ignition, secret, r.Scheme)
@@ -228,13 +228,13 @@ func (r *IgnitionV3Reconciler) reconcileSecret(ctx context.Context, ignition *me
 	return err
 }
 
-func (r *IgnitionV3Reconciler) buildSecret(ignition *metalv1alpha1.IgnitionV3, cofigBytes []byte) *corev1.Secret {
+func (r *IgnitionV3Reconciler) buildSecret(ignition *metalv1alpha1.IgnitionV3, configBytes []byte) *corev1.Secret {
 	return &corev1.Secret{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      ignition.Spec.TargetSecret.Name,
 			Namespace: ignition.Namespace,
 		},
-		Data: map[string][]byte{secretConfigData: cofigBytes},
+		Data: map[string][]byte{secretConfigData: configBytes},
 	}
 }
 
