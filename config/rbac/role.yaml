@@ -10,9 +10,9 @@ rules:
   - secrets
   verbs:
   - create
-  - delete
-  - get
-  - update
+  - list
+  - patch
+  - watch
 - apiGroups:
   - metal.cobaltcore.dev
   resources:

@@ -52,7 +52,7 @@ type IgnitionV3Reconciler struct {
 // +kubebuilder:rbac:groups=metal.cobaltcore.dev,resources=ignitionv3s,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=metal.cobaltcore.dev,resources=ignitionv3s/status,verbs=get;update;patch
 // +kubebuilder:rbac:groups=metal.cobaltcore.dev,resources=ignitionv3s/finalizers,verbs=update
-// +kubebuilder:rbac:groups="",resources=secrets,verbs=get;create;update;delete
+// +kubebuilder:rbac:groups="",resources=secrets,verbs=list;watch;create;patch
 
 // Reconcile is part of the main kubernetes reconciliation loop which aims to
 // move the current state of the cluster closer to the desired state.
