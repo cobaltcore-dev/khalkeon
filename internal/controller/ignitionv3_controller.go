@@ -65,18 +65,24 @@ type IgnitionV3Reconciler struct {
 // - https://pkg.go.dev/sigs.k8s.io/controller-runtime@v0.19.0/pkg/reconcile
 func (r *IgnitionV3Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	_ = log.FromContext(ctx)
+	log.Log.Info("Reconcile", "object", req.NamespacedName.String())
 
 	ignition := &metalv1alpha1.IgnitionV3{}
 	if err := r.Get(ctx, req.NamespacedName, ignition); err != nil {
 		return ctrl.Result{}, client.IgnoreNotFound(err)
 	}
 
+	// to remove ignition from merged target secret when deleting there must be added finalizer
+	if err := r.patchMergedResourcesStatus(ctx, ignition); err != nil {
+		return ctrl.Result{}, fmt.Errorf("couldn't patch merged resources status: %w", err)
+	}
+
 	if !ignition.DeletionTimestamp.IsZero() {
 		return ctrl.Result{}, nil
 	}
 
-	if err := r.setStatus(ctx, ignition); err != nil {
-		return ctrl.Result{}, fmt.Errorf("couldn't set status: %w", err)
+	if err := r.patchConfigurationStatus(ctx, ignition); err != nil {
+		return ctrl.Result{}, fmt.Errorf("couldn't patch configuration status: %w", err)
 	}
 
 	if ignition.Spec.TargetSecret == nil {
@@ -96,11 +102,15 @@ func (r *IgnitionV3Reconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 	if err := r.reconcileSecret(ctx, ignition, mergedConfigBytes); err != nil {
 		return ctrl.Result{}, fmt.Errorf("couldn't reconcile secret: %w", err)
 	}
+
+	if err := r.patchTargetIgnitionsStatus(ctx, ignitions, ignition); err != nil {
+		return ctrl.Result{}, fmt.Errorf("couldn't patch target ignitions status: %w", err)
+	}
+
 	return ctrl.Result{}, nil
 }
 
-func (r *IgnitionV3Reconciler) setStatus(ctx context.Context, ignition *metalv1alpha1.IgnitionV3) error {
-	ignitionBase := ignition.DeepCopy()
+func (r *IgnitionV3Reconciler) patchConfigurationStatus(ctx context.Context, ignition *metalv1alpha1.IgnitionV3) error {
 	condition := metav1.Condition{
 		Type:               metalv1alpha1.ConditionType,
 		LastTransitionTime: metav1.Now(),
@@ -115,6 +125,35 @@ func (r *IgnitionV3Reconciler) setStatus(ctx context.Context, ignition *metalv1a
 		condition.Reason = "ConversionSucceeded"
 		condition.Message = "Specification is a valid ignition configuration"
 	}
+	return r.patchStatusIfNeeded(ctx, ignition, condition)
+}
+
+func (r *IgnitionV3Reconciler) patchMergedResourcesStatus(ctx context.Context, ignition *metalv1alpha1.IgnitionV3) error {
+	if len(ignition.Status.TargetIgnitions) != 0 {
+		ignitionList := &metalv1alpha1.IgnitionV3List{}
+		if err := r.List(ctx, ignitionList); err != nil {
+			return err
+		}
+		for _, ign := range ignitionList.Items {
+			if slices.ContainsFunc(ignition.Status.TargetIgnitions, func(ref corev1.LocalObjectReference) bool { return ref.Name == ign.Name }) {
+				condition := metav1.Condition{
+					Type:               metalv1alpha1.SecretType,
+					LastTransitionTime: metav1.Now(),
+					Status:             metav1.ConditionFalse,
+					Reason:             "MergeResourceChanged",
+					Message:            fmt.Sprintf("%s has changed", client.ObjectKeyFromObject(ignition).String()),
+				}
+				if err := r.patchStatusIfNeeded(ctx, &ign, condition); err != nil {
+					return err
+				}
+			}
+		}
+	}
+	return nil
+}
+
+func (r *IgnitionV3Reconciler) patchStatusIfNeeded(ctx context.Context, ignition *metalv1alpha1.IgnitionV3, condition metav1.Condition) error {
+	ignitionBase := ignition.DeepCopy()
 	if changed := meta.SetStatusCondition(&ignition.Status.Conditions, condition); changed {
 		if err := r.Status().Patch(ctx, ignition, client.MergeFrom(ignitionBase)); err != nil {
 			return fmt.Errorf("failed to patch IgnitionV3 status: %w", err)
@@ -156,7 +195,7 @@ func (r *IgnitionV3Reconciler) getIgnitionsRec(ctx context.Context, ignitions []
 
 		ignitionList := metalv1alpha1.IgnitionV3List{}
 		if err := r.List(ctx, &ignitionList, &client.ListOptions{LabelSelector: selector, Namespace: ignition.Namespace}); err != nil {
-			return nil, client.IgnoreNotFound(err)
+			return nil, err
 		}
 		for _, matchingIgnition := range ignitionList.Items {
 			if collectedUIDs[matchingIgnition.GetUID()] {
@@ -174,6 +213,21 @@ func (r *IgnitionV3Reconciler) getIgnitionsRec(ctx context.Context, ignitions []
 		ignitions = slices.Concat(ignitions, newIgnitions)
 	}
 	return ignitions, nil
+}
+
+func (r *IgnitionV3Reconciler) patchTargetIgnitionsStatus(ctx context.Context, ignitions []*metalv1alpha1.IgnitionV3, targetIgnition *metalv1alpha1.IgnitionV3) error {
+	for _, ignition := range ignitions {
+		ref := corev1.LocalObjectReference{Name: targetIgnition.Name}
+		if ignition.Name == targetIgnition.Name || slices.Contains(ignition.Status.TargetIgnitions, ref) {
+			continue
+		}
+		ignitionBase := ignition.DeepCopy()
+		ignition.Status.TargetIgnitions = append(ignition.Status.TargetIgnitions, ref)
+		if err := r.Status().Patch(ctx, ignition, client.MergeFrom(ignitionBase)); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func (r *IgnitionV3Reconciler) mergeIgnitionConfig(ignitions []*metalv1alpha1.IgnitionV3) ([]byte, error) {
@@ -220,22 +274,30 @@ func (r *IgnitionV3Reconciler) reconcileSecret(ctx context.Context, ignition *me
 		return nil
 	}
 
-	secret := r.buildSecret(ignition, configBytes)
-
-	_, err := controllerutil.CreateOrPatch(ctx, r.Client, secret, func() error {
-		return controllerutil.SetOwnerReference(ignition, secret, r.Scheme)
-	})
-	return err
-}
-
-func (r *IgnitionV3Reconciler) buildSecret(ignition *metalv1alpha1.IgnitionV3, configBytes []byte) *corev1.Secret {
-	return &corev1.Secret{
+	secret := &corev1.Secret{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      ignition.Spec.TargetSecret.Name,
 			Namespace: ignition.Namespace,
 		},
 		Data: map[string][]byte{secretConfigData: configBytes},
 	}
+	res, err := controllerutil.CreateOrPatch(ctx, r.Client, secret, func() error {
+		secret.Data[secretConfigData] = configBytes
+		return controllerutil.SetOwnerReference(ignition, secret, r.Scheme)
+	})
+
+	if res == controllerutil.OperationResultNone {
+		condition := metav1.Condition{
+			Type:               metalv1alpha1.SecretType,
+			LastTransitionTime: metav1.Now(),
+			Status:             metav1.ConditionTrue,
+			Reason:             "SecretReady",
+		}
+		if err := r.patchStatusIfNeeded(ctx, ignition, condition); err != nil {
+			return err
+		}
+	}
+	return err
 }
 
 // SetupWithManager sets up the controller with the Manager.

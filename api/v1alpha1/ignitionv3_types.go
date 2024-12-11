@@ -35,13 +35,20 @@ type IgnitionV3Status struct {
 	// +patchMergeKey=type
 	// +optional
 	Conditions []metav1.Condition `json:"conditions,omitempty" patchStrategy:"merge" patchMergeKey:"type" protobuf:"bytes,1,rep,name=conditions"`
+
+	// TargetIgnitions is a list of Ignitions with TargetSecret that merged this ignition
+	TargetIgnitions []v1.LocalObjectReference `json:"targetIgnitions,omitempty"`
+	// TODO what if merge is changed and Ignition is no longer used for a secret. It will trigger unnecessary reconciliation.
 }
 
-const ConditionType = "Configuration"
+const (
+	ConditionType = "Configuration"
+	SecretType    = "Secret"
+)
 
 // +kubebuilder:object:root=true
 // +kubebuilder:subresource:status
-// +kubebuilder:resource:scope=Namespaced
+// +kubebuilder:resource:scope=Namespaced,shortName=ign
 
 // IgnitionV3 is the Schema for the ignitionv3s API.
 type IgnitionV3 struct {
