@@ -43,6 +43,8 @@ import (
 
 const secretConfigData = "config"
 
+var finalizer = metalv1alpha1.GroupVersion.Group + "/finalizer"
+
 // IgnitionV3Reconciler reconciles a IgnitionV3 object
 type IgnitionV3Reconciler struct {
 	client.Client
@@ -72,12 +74,21 @@ func (r *IgnitionV3Reconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 		return ctrl.Result{}, client.IgnoreNotFound(err)
 	}
 
-	// to remove ignition from merged target secret when deleting there must be added finalizer
-	if err := r.patchMergedResourcesStatus(ctx, ignition); err != nil {
-		return ctrl.Result{}, fmt.Errorf("couldn't patch merged resources status: %w", err)
+	if err := r.patchSecretStatus(ctx, ignition); err != nil {
+		return ctrl.Result{}, fmt.Errorf("couldn't patch secret status: %w", err)
+	}
+
+	if controllerutil.AddFinalizer(ignition, finalizer) {
+		// ignition is created and target ignitions should be triggered
+		if err := r.Update(ctx, ignition); err != nil {
+			return ctrl.Result{}, fmt.Errorf("couldn't add finalizer: %w", err)
+		}
 	}
 
 	if !ignition.DeletionTimestamp.IsZero() {
+		if controllerutil.RemoveFinalizer(ignition, finalizer) {
+			return ctrl.Result{}, r.Update(ctx, ignition)
+		}
 		return ctrl.Result{}, nil
 	}
 
@@ -128,7 +139,7 @@ func (r *IgnitionV3Reconciler) patchConfigurationStatus(ctx context.Context, ign
 	return r.patchStatusIfNeeded(ctx, ignition, condition)
 }
 
-func (r *IgnitionV3Reconciler) patchMergedResourcesStatus(ctx context.Context, ignition *metalv1alpha1.IgnitionV3) error {
+func (r *IgnitionV3Reconciler) patchSecretStatus(ctx context.Context, ignition *metalv1alpha1.IgnitionV3) error {
 	if len(ignition.Status.TargetIgnitions) != 0 {
 		ignitionList := &metalv1alpha1.IgnitionV3List{}
 		if err := r.List(ctx, ignitionList); err != nil {
