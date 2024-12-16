@@ -121,24 +121,6 @@ func (r *IgnitionV3Reconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 	return ctrl.Result{}, nil
 }
 
-func (r *IgnitionV3Reconciler) patchConfigurationStatus(ctx context.Context, ignition *metalv1alpha1.IgnitionV3) error {
-	condition := metav1.Condition{
-		Type:               metalv1alpha1.ConditionType,
-		LastTransitionTime: metav1.Now(),
-	}
-	_, err := convert(ignition.Spec)
-	if err != nil {
-		condition.Status = metav1.ConditionFalse
-		condition.Reason = "ConversionFailed"
-		condition.Message = err.Error()
-	} else {
-		condition.Status = metav1.ConditionTrue
-		condition.Reason = "ConversionSucceeded"
-		condition.Message = "Specification is a valid ignition configuration"
-	}
-	return r.patchStatusIfNeeded(ctx, ignition, condition)
-}
-
 func (r *IgnitionV3Reconciler) patchSecretStatus(ctx context.Context, ignition *metalv1alpha1.IgnitionV3) error {
 	if len(ignition.Status.TargetIgnitions) != 0 {
 		ignitionList := &metalv1alpha1.IgnitionV3List{}
@@ -161,6 +143,24 @@ func (r *IgnitionV3Reconciler) patchSecretStatus(ctx context.Context, ignition *
 		}
 	}
 	return nil
+}
+
+func (r *IgnitionV3Reconciler) patchConfigurationStatus(ctx context.Context, ignition *metalv1alpha1.IgnitionV3) error {
+	condition := metav1.Condition{
+		Type:               metalv1alpha1.ConditionType,
+		LastTransitionTime: metav1.Now(),
+	}
+	_, err := convert(ignition.Spec)
+	if err != nil {
+		condition.Status = metav1.ConditionFalse
+		condition.Reason = "ConversionFailed"
+		condition.Message = err.Error()
+	} else {
+		condition.Status = metav1.ConditionTrue
+		condition.Reason = "ConversionSucceeded"
+		condition.Message = "Specification is a valid ignition configuration"
+	}
+	return r.patchStatusIfNeeded(ctx, ignition, condition)
 }
 
 func (r *IgnitionV3Reconciler) patchStatusIfNeeded(ctx context.Context, ignition *metalv1alpha1.IgnitionV3, condition metav1.Condition) error {
@@ -224,21 +224,6 @@ func (r *IgnitionV3Reconciler) getIgnitionsRec(ctx context.Context, ignitions []
 		ignitions = slices.Concat(ignitions, newIgnitions)
 	}
 	return ignitions, nil
-}
-
-func (r *IgnitionV3Reconciler) patchTargetIgnitionsStatus(ctx context.Context, ignitions []*metalv1alpha1.IgnitionV3, targetIgnition *metalv1alpha1.IgnitionV3) error {
-	for _, ignition := range ignitions {
-		ref := corev1.LocalObjectReference{Name: targetIgnition.Name}
-		if ignition.Name == targetIgnition.Name || slices.Contains(ignition.Status.TargetIgnitions, ref) {
-			continue
-		}
-		ignitionBase := ignition.DeepCopy()
-		ignition.Status.TargetIgnitions = append(ignition.Status.TargetIgnitions, ref)
-		if err := r.Status().Patch(ctx, ignition, client.MergeFrom(ignitionBase)); err != nil {
-			return err
-		}
-	}
-	return nil
 }
 
 func (r *IgnitionV3Reconciler) mergeIgnitionConfig(ignitions []*metalv1alpha1.IgnitionV3) ([]byte, error) {
@@ -309,6 +294,21 @@ func (r *IgnitionV3Reconciler) reconcileSecret(ctx context.Context, ignition *me
 		}
 	}
 	return err
+}
+
+func (r *IgnitionV3Reconciler) patchTargetIgnitionsStatus(ctx context.Context, ignitions []*metalv1alpha1.IgnitionV3, targetIgnition *metalv1alpha1.IgnitionV3) error {
+	for _, ignition := range ignitions {
+		ref := corev1.LocalObjectReference{Name: targetIgnition.Name}
+		if ignition.Name == targetIgnition.Name || slices.Contains(ignition.Status.TargetIgnitions, ref) {
+			continue
+		}
+		ignitionBase := ignition.DeepCopy()
+		ignition.Status.TargetIgnitions = append(ignition.Status.TargetIgnitions, ref)
+		if err := r.Status().Patch(ctx, ignition, client.MergeFrom(ignitionBase)); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // SetupWithManager sets up the controller with the Manager.
