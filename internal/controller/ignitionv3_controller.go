@@ -74,15 +74,17 @@ func (r *IgnitionV3Reconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 		return ctrl.Result{}, client.IgnoreNotFound(err)
 	}
 
-	if err := r.patchSecretStatus(ctx, ignition); err != nil {
-		return ctrl.Result{}, fmt.Errorf("couldn't patch secret status: %w", err)
-	}
-
+	isIgnitionCreated := false
 	if controllerutil.AddFinalizer(ignition, finalizer) {
 		// ignition is created and target ignitions should be triggered
 		if err := r.Update(ctx, ignition); err != nil {
 			return ctrl.Result{}, fmt.Errorf("couldn't add finalizer: %w", err)
 		}
+		isIgnitionCreated = true
+	}
+
+	if err := r.patchSecretStatus(ctx, ignition, isIgnitionCreated); err != nil {
+		return ctrl.Result{}, fmt.Errorf("couldn't patch secret status: %w", err)
 	}
 
 	if !ignition.DeletionTimestamp.IsZero() {
@@ -121,20 +123,20 @@ func (r *IgnitionV3Reconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 	return ctrl.Result{}, nil
 }
 
-func (r *IgnitionV3Reconciler) patchSecretStatus(ctx context.Context, ignition *metalv1alpha1.IgnitionV3) error {
-	if len(ignition.Status.TargetIgnitions) != 0 {
+func (r *IgnitionV3Reconciler) patchSecretStatus(ctx context.Context, reconcileIgnition *metalv1alpha1.IgnitionV3, isIgnitionCreated bool) error {
+	if len(reconcileIgnition.Status.TargetIgnitions) != 0 || isIgnitionCreated {
 		ignitionList := &metalv1alpha1.IgnitionV3List{}
 		if err := r.List(ctx, ignitionList); err != nil {
 			return err
 		}
 		for _, ign := range ignitionList.Items {
-			if slices.ContainsFunc(ignition.Status.TargetIgnitions, func(ref corev1.LocalObjectReference) bool { return ref.Name == ign.Name }) {
+			if msg := r.getSecretStatusMessage(reconcileIgnition, &ign, isIgnitionCreated); msg != "" {
 				condition := metav1.Condition{
 					Type:               metalv1alpha1.SecretType,
 					LastTransitionTime: metav1.Now(),
 					Status:             metav1.ConditionFalse,
 					Reason:             "MergeResourceChanged",
-					Message:            fmt.Sprintf("%s has changed", client.ObjectKeyFromObject(ignition).String()),
+					Message:            msg,
 				}
 				if err := r.patchStatusIfNeeded(ctx, &ign, condition); err != nil {
 					return err
@@ -143,6 +145,17 @@ func (r *IgnitionV3Reconciler) patchSecretStatus(ctx context.Context, ignition *
 		}
 	}
 	return nil
+}
+
+func (r *IgnitionV3Reconciler) getSecretStatusMessage(reconcileIgnition, ignition *metalv1alpha1.IgnitionV3, isIgnitionCreated bool) string {
+	if isIgnitionCreated && ignition.Spec.TargetSecret != nil {
+		return fmt.Sprintf("%s was created", client.ObjectKeyFromObject(reconcileIgnition).String())
+	}
+	if slices.ContainsFunc(reconcileIgnition.Status.TargetIgnitions,
+		func(ref corev1.LocalObjectReference) bool { return ref.Name == ignition.Name }) {
+		return fmt.Sprintf("%s has changed", client.ObjectKeyFromObject(reconcileIgnition).String())
+	}
+	return ""
 }
 
 func (r *IgnitionV3Reconciler) patchConfigurationStatus(ctx context.Context, ignition *metalv1alpha1.IgnitionV3) error {
