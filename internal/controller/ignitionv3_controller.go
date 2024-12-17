@@ -36,7 +36,7 @@ import (
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
-	"sigs.k8s.io/controller-runtime/pkg/log"
+	ctrllog "sigs.k8s.io/controller-runtime/pkg/log"
 
 	metalv1alpha1 "github.com/cobaltcore-dev/khalkeon/api/v1alpha1"
 )
@@ -66,13 +66,17 @@ type IgnitionV3Reconciler struct {
 // For more details, check Reconcile and its Result here:
 // - https://pkg.go.dev/sigs.k8s.io/controller-runtime@v0.19.0/pkg/reconcile
 func (r *IgnitionV3Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
-	_ = log.FromContext(ctx)
-	log.Log.Info("Reconcile", "object", req.NamespacedName.String())
+	log := ctrllog.Log.WithValues("object", req.NamespacedName.String())
 
 	ignition := &metalv1alpha1.IgnitionV3{}
 	if err := r.Get(ctx, req.NamespacedName, ignition); err != nil {
 		return ctrl.Result{}, client.IgnoreNotFound(err)
 	}
+	extraLogs := []any{}
+	if cond := meta.FindStatusCondition(ignition.Status.Conditions, metalv1alpha1.SecretType); cond != nil && cond.Status == metav1.ConditionFalse {
+		extraLogs = append(extraLogs, "secret status", cond.Message)
+	}
+	log.Info("Reconcile", extraLogs...)
 
 	isIgnitionCreated := false
 	if controllerutil.AddFinalizer(ignition, finalizer) {
@@ -80,6 +84,7 @@ func (r *IgnitionV3Reconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 		if err := r.Update(ctx, ignition); err != nil {
 			return ctrl.Result{}, fmt.Errorf("couldn't add finalizer: %w", err)
 		}
+		log.V(1).Info("Finalizer was added")
 		isIgnitionCreated = true
 	}
 
@@ -89,6 +94,7 @@ func (r *IgnitionV3Reconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 
 	if !ignition.DeletionTimestamp.IsZero() {
 		if controllerutil.RemoveFinalizer(ignition, finalizer) {
+			log.V(1).Info("Finalizer was removed")
 			return ctrl.Result{}, r.Update(ctx, ignition)
 		}
 		return ctrl.Result{}, nil

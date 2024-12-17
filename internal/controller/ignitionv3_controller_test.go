@@ -24,6 +24,8 @@ import (
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
+	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 )
 
@@ -35,8 +37,18 @@ var _ = Describe("IgnitionV3 Controller", func() {
 		)
 
 		var (
-			ign *metalv1alpha1.IgnitionV3
-			nn  = types.NamespacedName{Name: name, Namespace: namespace}
+			ign                  *metalv1alpha1.IgnitionV3
+			nn                   = types.NamespacedName{Name: name, Namespace: namespace}
+			deleteWithFinalizers = func(ign_nn types.NamespacedName) {
+				ignition := &metalv1alpha1.IgnitionV3{}
+				if err := k8sClient.Get(ctx, ign_nn, ignition); err != nil {
+					return
+				}
+				if controllerutil.RemoveFinalizer(ignition, finalizer) {
+					Expect(k8sClient.Update(ctx, ignition)).To(Succeed())
+				}
+				Expect(k8sClient.Delete(ctx, ignition)).To(Succeed())
+			}
 		)
 
 		BeforeEach(func() {
@@ -44,7 +56,7 @@ var _ = Describe("IgnitionV3 Controller", func() {
 		})
 
 		AfterEach(func() {
-			Expect(k8sClient.Delete(ctx, ign)).To(Succeed())
+			deleteWithFinalizers(nn)
 		})
 
 		When("Igntion doesn't have target secret", func() {
@@ -113,8 +125,8 @@ var _ = Describe("IgnitionV3 Controller", func() {
 
 			AfterEach(func() {
 				Expect(k8sClient.Delete(ctx, secret)).To(Succeed())
-				_ = k8sClient.Delete(ctx, ign2)
-				_ = k8sClient.Delete(ctx, ign3)
+				deleteWithFinalizers(client.ObjectKeyFromObject(ign2))
+				deleteWithFinalizers(client.ObjectKeyFromObject(ign3))
 			})
 
 			It("when merge is empty, should create a secret with single config", func() {
