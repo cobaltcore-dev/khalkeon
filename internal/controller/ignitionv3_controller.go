@@ -43,7 +43,7 @@ import (
 
 const secretConfigData = "config"
 
-var finalizer = metalv1alpha1.GroupVersion.Group + "/finalizer"
+var finalizer = metalv1alpha1.GroupVersion.Group + "/ignitionv3"
 
 // IgnitionV3Reconciler reconciles a IgnitionV3 object
 type IgnitionV3Reconciler struct {
