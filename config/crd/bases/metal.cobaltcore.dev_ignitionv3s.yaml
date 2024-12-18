@@ -596,9 +596,15 @@ spec:
                     type: string
                 type: object
                 x-kubernetes-map-type: atomic
+                x-kubernetes-validations:
+                - message: targetSecret is immutable
+                  rule: self == oldSelf
             required:
             - ignition
             type: object
+            x-kubernetes-validations:
+            - message: targetSecret is required once set
+              rule: '!has(oldSelf.targetSecret) || has(self.targetSecret)'
           status:
             description: IgnitionV3Status defines the observed state of IgnitionV3.
             properties:

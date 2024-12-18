@@ -22,7 +22,9 @@ import (
 )
 
 // IgnitionV3Spec defines the desired state of IgnitionV3.
+// +kubebuilder:validation:XValidation:rule="!has(oldSelf.targetSecret) || has(self.targetSecret)", message="targetSecret is required once set"
 type IgnitionV3Spec struct {
+	// +kubebuilder:validation:XValidation:rule="self == oldSelf",message="targetSecret is immutable"
 	TargetSecret *v1.LocalObjectReference `json:"targetSecret,omitempty"`
 
 	Config `json:",inline"`
