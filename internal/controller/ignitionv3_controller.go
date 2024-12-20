@@ -66,7 +66,7 @@ type IgnitionV3Reconciler struct {
 // For more details, check Reconcile and its Result here:
 // - https://pkg.go.dev/sigs.k8s.io/controller-runtime@v0.19.0/pkg/reconcile
 func (r *IgnitionV3Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
-	log := ctrllog.Log.WithValues("object", req.NamespacedName.String())
+	log := ctrllog.FromContext(ctx)
 
 	ignition := &metalv1alpha1.IgnitionV3{}
 	if err := r.Get(ctx, req.NamespacedName, ignition); err != nil {
