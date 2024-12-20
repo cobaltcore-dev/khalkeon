@@ -32,6 +32,7 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 
 	// "k8s.io/apimachinery/pkg/labels"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -113,6 +114,11 @@ func (r *IgnitionV3Reconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 		return ctrl.Result{}, fmt.Errorf("couldn't get ignitions: %w", err)
 	}
 
+	ignitions, err = r.replaceIgnitions(ctx, ignitions)
+	if err != nil {
+		return ctrl.Result{}, fmt.Errorf("couldn't replace ignitions: %w", err)
+	}
+
 	mergedConfigBytes, err := r.mergeIgnitionConfig(ignitions)
 	if err != nil {
 		return ctrl.Result{}, fmt.Errorf("couldn't merge ignitions: %w", err)
@@ -166,18 +172,42 @@ func (r *IgnitionV3Reconciler) getSecretStatusMessage(reconcileIgnition, ignitio
 
 func (r *IgnitionV3Reconciler) patchConfigurationStatus(ctx context.Context, ignition *metalv1alpha1.IgnitionV3) error {
 	condition := metav1.Condition{
-		Type:               metalv1alpha1.ConditionType,
+		Type:               metalv1alpha1.ConfigurationType,
 		LastTransitionTime: metav1.Now(),
+		Status:             metav1.ConditionTrue,
+		Reason:             "ConversionSucceeded",
+		Message:            "Specification is a valid ignition configuration",
 	}
-	_, err := convert(ignition.Spec)
-	if err != nil {
-		condition.Status = metav1.ConditionFalse
-		condition.Reason = "ConversionFailed"
-		condition.Message = err.Error()
-	} else {
-		condition.Status = metav1.ConditionTrue
-		condition.Reason = "ConversionSucceeded"
-		condition.Message = "Specification is a valid ignition configuration"
+
+	foundIgns := []string{ignition.Name}
+	var err error
+	ign := ignition.DeepCopy()
+	for ign.Spec.Config.Ignition.Config.Replace != nil {
+		nn := types.NamespacedName{Name: ign.Spec.Config.Ignition.Config.Replace.Name, Namespace: ign.Namespace}
+		if slices.Contains(foundIgns, nn.Name) {
+			condition.Status = metav1.ConditionFalse
+			condition.Reason = "ReplaceLoop"
+			condition.Message = "Configuration replace field will result in a loop"
+			break
+		}
+
+		if err = r.Client.Get(ctx, nn, ign); apierrors.IsNotFound(err) {
+			condition.Status = metav1.ConditionFalse
+			condition.Reason = "ReplaceNotFound"
+			condition.Message = "Couldn't find replace ignition " + nn.String()
+			break
+		} else if err != nil {
+			return err
+		}
+	}
+
+	if condition.Status == metav1.ConditionTrue {
+		_, err = convert(ign.Spec)
+		if err != nil {
+			condition.Status = metav1.ConditionFalse
+			condition.Reason = "ConversionFailed"
+			condition.Message = err.Error()
+		}
 	}
 	return r.patchStatusIfNeeded(ctx, ignition, condition)
 }
@@ -243,6 +273,33 @@ func (r *IgnitionV3Reconciler) getIgnitionsRec(ctx context.Context, ignitions []
 		ignitions = slices.Concat(ignitions, newIgnitions)
 	}
 	return ignitions, nil
+}
+
+func (r *IgnitionV3Reconciler) replaceIgnitions(ctx context.Context, ignitions []*metalv1alpha1.IgnitionV3) ([]*metalv1alpha1.IgnitionV3, error) {
+	ret := []*metalv1alpha1.IgnitionV3{}
+	ignsToReplace := []*metalv1alpha1.IgnitionV3{}
+	for _, ign := range ignitions {
+		if ign.Spec.Config.Ignition.Config.Replace == nil {
+			ret = append(ret, ign)
+		} else {
+			ignsToReplace = append(ignsToReplace, ign)
+		}
+	}
+	for _, ign := range ignsToReplace {
+		if cond := meta.FindStatusCondition(ign.Status.Conditions, metalv1alpha1.ConfigurationType); cond == nil || cond.Status != metav1.ConditionTrue {
+			return nil, fmt.Errorf("ignition to replace %s must have configuration status set to true", client.ObjectKeyFromObject(ign).String())
+		} else {
+			for ign.Spec.Config.Ignition.Config.Replace != nil {
+				nn := types.NamespacedName{Name: ign.Spec.Config.Ignition.Config.Replace.Name, Namespace: ign.Namespace}
+				if err := r.Client.Get(ctx, nn, ign); err != nil {
+					return nil, err
+				}
+			}
+			ret = append(ret, ign)
+		}
+	}
+
+	return ret, nil
 }
 
 func (r *IgnitionV3Reconciler) mergeIgnitionConfig(ignitions []*metalv1alpha1.IgnitionV3) ([]byte, error) {

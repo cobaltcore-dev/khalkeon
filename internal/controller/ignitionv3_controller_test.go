@@ -69,7 +69,7 @@ var _ = Describe("IgnitionV3 Controller", func() {
 				Expect(err).NotTo(HaveOccurred())
 
 				Expect(k8sClient.Get(ctx, nn, ign)).To(Succeed())
-				Expect(meta.IsStatusConditionTrue(ign.Status.Conditions, metalv1alpha1.ConditionType)).To(BeTrue())
+				Expect(meta.IsStatusConditionTrue(ign.Status.Conditions, metalv1alpha1.ConfigurationType)).To(BeTrue())
 			})
 
 			It("when configuration is invalid, should update status ", func() {
@@ -81,7 +81,7 @@ var _ = Describe("IgnitionV3 Controller", func() {
 				Expect(err).NotTo(HaveOccurred())
 
 				Expect(k8sClient.Get(ctx, nn, ign)).To(Succeed())
-				Expect(meta.IsStatusConditionTrue(ign.Status.Conditions, metalv1alpha1.ConditionType)).To(BeFalse())
+				Expect(meta.IsStatusConditionTrue(ign.Status.Conditions, metalv1alpha1.ConfigurationType)).To(BeFalse())
 			})
 		})
 

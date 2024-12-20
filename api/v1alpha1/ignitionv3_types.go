@@ -44,8 +44,8 @@ type IgnitionV3Status struct {
 }
 
 const (
-	ConditionType = "Configuration"
-	SecretType    = "Secret"
+	ConfigurationType = "Configuration"
+	SecretType        = "Secret"
 )
 
 // +kubebuilder:object:root=true
