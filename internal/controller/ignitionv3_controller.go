@@ -215,10 +215,10 @@ result will be concatenation of {A}, {B} and {C, D}
 func (r *IgnitionV3Reconciler) getIgnitionsRec(ctx context.Context, ignitions []*metalv1alpha1.IgnitionV3, collectedUIDs map[types.UID]bool) ([]*metalv1alpha1.IgnitionV3, error) {
 	newIgnitions := []*metalv1alpha1.IgnitionV3{}
 	for _, ignition := range ignitions {
-		if ignition.Spec.Ignition.Config == nil {
+		if ignition.Spec.Ignition.Config.Merge == nil {
 			continue
 		}
-		selector, err := metav1.LabelSelectorAsSelector(&ignition.Spec.Ignition.Config.Merge)
+		selector, err := metav1.LabelSelectorAsSelector(ignition.Spec.Ignition.Config.Merge)
 		if err != nil {
 			return nil, err
 		}
@@ -269,7 +269,8 @@ func (r *IgnitionV3Reconciler) mergeIgnitionConfig(ignitions []*metalv1alpha1.Ig
 }
 
 func convert(spec metalv1alpha1.IgnitionV3Spec) (ignitiontypes.Config, error) {
-	spec.Ignition.Config = nil
+	spec.Ignition.Config.Merge = nil
+	spec.Ignition.Config.Replace = nil
 	spec.TargetSecret = nil
 
 	specByte, err := json.Marshal(spec)

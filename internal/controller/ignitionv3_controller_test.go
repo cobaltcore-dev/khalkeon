@@ -104,8 +104,7 @@ var _ = Describe("IgnitionV3 Controller", func() {
 				ign.Spec.KernelArguments.ShouldExist = []metalv1alpha1.KernelArgument{"ignition-1 value"}
 				ign.Spec.TargetSecret = &corev1.LocalObjectReference{Name: secretName}
 				labels := map[string]string{"merge": "true"}
-				ign.Spec.Config.Ignition.Config = new(metalv1alpha1.IgnitionConfig)
-				ign.Spec.Config.Ignition.Config.Merge = metav1.LabelSelector{MatchLabels: labels} // link to ign2
+				ign.Spec.Config.Ignition.Config.Merge = &metav1.LabelSelector{MatchLabels: labels} // link to ign2
 
 				secret = &corev1.Secret{ObjectMeta: metav1.ObjectMeta{Name: secretName, Namespace: namespace}}
 
@@ -114,8 +113,7 @@ var _ = Describe("IgnitionV3 Controller", func() {
 				ign2.Spec.KernelArguments.ShouldNotExist = []metalv1alpha1.KernelArgument{"ignition-2 value"}
 				ign2.Labels = labels
 				recLabels := map[string]string{"merge": "recurrently"}
-				ign2.Spec.Config.Ignition.Config = new(metalv1alpha1.IgnitionConfig)
-				ign2.Spec.Config.Ignition.Config.Merge = metav1.LabelSelector{MatchLabels: recLabels} // link to ign3
+				ign2.Spec.Config.Ignition.Config.Merge = &metav1.LabelSelector{MatchLabels: recLabels} // link to ign3
 
 				ign3 = &metalv1alpha1.IgnitionV3{ObjectMeta: metav1.ObjectMeta{Name: name3, Namespace: namespace}}
 				ign3.Spec.Config.Ignition.Version = validConfigVersion
