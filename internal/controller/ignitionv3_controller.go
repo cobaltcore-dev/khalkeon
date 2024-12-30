@@ -224,7 +224,7 @@ func (r *IgnitionV3Reconciler) patchStatusIfNeeded(ctx context.Context, ignition
 
 // if ignition doesn't match its merge label selectors, it won't be present in a slice?
 func (r *IgnitionV3Reconciler) getIgnitions(ctx context.Context, ignition *metalv1alpha1.IgnitionV3) ([]*metalv1alpha1.IgnitionV3, error) {
-	return r.getIgnitionsRec(ctx, []*metalv1alpha1.IgnitionV3{ignition}, map[types.UID]bool{ignition.GetUID(): true})
+	return r.getIgnitionsRec(ctx, []*metalv1alpha1.IgnitionV3{ignition.DeepCopy()}, map[types.UID]bool{ignition.GetUID(): true})
 }
 
 /*
@@ -277,24 +277,20 @@ func (r *IgnitionV3Reconciler) getIgnitionsRec(ctx context.Context, ignitions []
 
 func (r *IgnitionV3Reconciler) replaceIgnitions(ctx context.Context, ignitions []*metalv1alpha1.IgnitionV3) ([]*metalv1alpha1.IgnitionV3, error) {
 	ret := []*metalv1alpha1.IgnitionV3{}
-	ignsToReplace := []*metalv1alpha1.IgnitionV3{}
+
 	for _, ign := range ignitions {
-		if ign.Spec.Config.Ignition.Config.Replace == nil {
-			ret = append(ret, ign)
-		} else {
-			ignsToReplace = append(ignsToReplace, ign)
-		}
-	}
-	for _, ign := range ignsToReplace {
-		if cond := meta.FindStatusCondition(ign.Status.Conditions, metalv1alpha1.ConfigurationType); cond == nil || cond.Status != metav1.ConditionTrue {
-			return nil, fmt.Errorf("ignition to replace %s must have configuration status set to true", client.ObjectKeyFromObject(ign).String())
-		} else {
-			for ign.Spec.Config.Ignition.Config.Replace != nil {
+		for ign.Spec.Config.Ignition.Config.Replace != nil {
+			if cond := meta.FindStatusCondition(ign.Status.Conditions, metalv1alpha1.ConfigurationType); cond == nil || cond.Status != metav1.ConditionTrue {
+				return nil, fmt.Errorf("ignition to replace %s must have status configuration condition set to true, condition: %s", client.ObjectKeyFromObject(ign).String(), cond.String())
+			} else {
 				nn := types.NamespacedName{Name: ign.Spec.Config.Ignition.Config.Replace.Name, Namespace: ign.Namespace}
 				if err := r.Client.Get(ctx, nn, ign); err != nil {
 					return nil, err
 				}
 			}
+		}
+		isIgnAbsentInRet := slices.IndexFunc(ret, func(i *metalv1alpha1.IgnitionV3) bool { return ign.Name == i.Name }) == -1
+		if isIgnAbsentInRet {
 			ret = append(ret, ign)
 		}
 	}
