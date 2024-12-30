@@ -21,6 +21,7 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	corev1 "k8s.io/api/core/v1"
+	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
@@ -37,17 +38,22 @@ var _ = Describe("IgnitionV3 Controller", func() {
 		)
 
 		var (
-			ign                  *metalv1alpha1.IgnitionV3
-			nn                   = types.NamespacedName{Name: name, Namespace: namespace}
-			deleteWithFinalizers = func(ign_nn types.NamespacedName) {
-				ignition := &metalv1alpha1.IgnitionV3{}
-				if err := k8sClient.Get(ctx, ign_nn, ignition); err != nil {
+			ign             *metalv1alpha1.IgnitionV3
+			nn              = types.NamespacedName{Name: name, Namespace: namespace}
+			deleteIfPresent = func(obj client.Object, opts ...func(client.Object)) {
+				if err := k8sClient.Get(ctx, client.ObjectKeyFromObject(obj), obj); err != nil {
 					return
 				}
-				if controllerutil.RemoveFinalizer(ignition, finalizer) {
-					Expect(k8sClient.Update(ctx, ignition)).To(Succeed())
+				for _, opt := range opts {
+					opt(obj)
 				}
-				Expect(k8sClient.Delete(ctx, ignition)).To(Succeed())
+				Expect(k8sClient.Delete(ctx, obj)).To(Succeed())
+			}
+
+			withFinalizers = func(ign client.Object) {
+				if controllerutil.RemoveFinalizer(ign, finalizer) {
+					Expect(k8sClient.Update(ctx, ign)).To(Succeed())
+				}
 			}
 		)
 
@@ -56,10 +62,10 @@ var _ = Describe("IgnitionV3 Controller", func() {
 		})
 
 		AfterEach(func() {
-			deleteWithFinalizers(nn)
+			deleteIfPresent(ign, withFinalizers)
 		})
 
-		When("Igntion doesn't have target secret", func() {
+		When("Ignition doesn't have target secret", func() {
 			It("when configuration is valid, should update status ", func() {
 				ign.Spec.Config.Ignition.Version = validConfigVersion
 				Expect(k8sClient.Create(ctx, ign)).To(Succeed())
@@ -85,7 +91,7 @@ var _ = Describe("IgnitionV3 Controller", func() {
 			})
 		})
 
-		When("Igntion has target secret", func() {
+		When("Ignition has target secret", func() {
 			const (
 				secretName = "test-ignition-secret"
 				name2      = "test-ignition-2"
@@ -122,9 +128,9 @@ var _ = Describe("IgnitionV3 Controller", func() {
 			})
 
 			AfterEach(func() {
-				Expect(k8sClient.Delete(ctx, secret)).To(Succeed())
-				deleteWithFinalizers(client.ObjectKeyFromObject(ign2))
-				deleteWithFinalizers(client.ObjectKeyFromObject(ign3))
+				deleteIfPresent(secret)
+				deleteIfPresent(ign2, withFinalizers)
+				deleteIfPresent(ign3, withFinalizers)
 			})
 
 			It("when merge is empty, should create a secret with single config", func() {
@@ -161,6 +167,81 @@ var _ = Describe("IgnitionV3 Controller", func() {
 
 				Expect(k8sClient.Get(ctx, secretNn, secret)).To(Succeed())
 				Expect(secret.Data[secretConfigData]).To(Equal([]byte(`{"ignition":{"config":{"replace":{"verification":{}}},"proxy":{},"security":{"tls":{}},"timeouts":{},"version":"3.5.0"},"kernelArguments":{"shouldExist":["ignition-1 value"],"shouldNotExist":["ignition-2 value"]},"passwd":{"groups":[{"name":"ignition-3 value"}]},"storage":{},"systemd":{}}`)))
+			})
+
+			When("Ignition has replace field", func() {
+				const (
+					replaceName = "test-ignition-replace"
+				)
+
+				var (
+					replaceIgn *metalv1alpha1.IgnitionV3
+				)
+
+				BeforeEach(func() {
+					replaceIgn = &metalv1alpha1.IgnitionV3{ObjectMeta: metav1.ObjectMeta{Name: replaceName, Namespace: namespace}}
+					replaceIgn.Spec.Config.Ignition.Version = validConfigVersion
+					replaceIgn.Spec.KernelArguments.ShouldExist = []metalv1alpha1.KernelArgument{"replace ignition value"}
+					replaceIgn.Spec.Passwd.Groups = []metalv1alpha1.PasswdGroup{{Name: "replace ignition value"}}
+				})
+
+				AfterEach(func() {
+					deleteIfPresent(replaceIgn, withFinalizers)
+				})
+
+				It("when an IgnitionV3 has a replace loop, should update the IgnitionV3 status to false", func() {
+					replaceIgn.Spec.Config.Ignition.Config.Replace = &v1.LocalObjectReference{Name: replaceName}
+					Expect(k8sClient.Create(ctx, replaceIgn)).To(Succeed())
+
+					controller := &IgnitionV3Reconciler{Client: k8sClient, Scheme: k8sClient.Scheme()}
+					_, err := controller.Reconcile(ctx, reconcile.Request{NamespacedName: nn})
+					Expect(err).NotTo(HaveOccurred())
+
+					Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(replaceIgn), replaceIgn)).To(Succeed())
+					Expect(meta.IsStatusConditionTrue(replaceIgn.Status.Conditions, metalv1alpha1.ConfigurationType)).To(BeFalse())
+				})
+
+				It("when an IgnitionV3 with target secret is replaced with non existing IgnitionV3, should return an error", func() {
+					ign.Spec.Config.Ignition.Config.Replace = &v1.LocalObjectReference{Name: replaceName}
+					ign.Spec.Config.Ignition.Config.Merge = nil
+					Expect(k8sClient.Create(ctx, ign)).To(Succeed())
+
+					controller := &IgnitionV3Reconciler{Client: k8sClient, Scheme: k8sClient.Scheme()}
+					_, err := controller.Reconcile(ctx, reconcile.Request{NamespacedName: nn})
+					Expect(err.Error()).To(HavePrefix("couldn't replace ignitions: ignition to replace test-namespace/test-ignition must have status configuration condition set to true, condition: &Condition{Type:Configuration,Status:False"))
+					Expect(err.Error()).To(HaveSuffix("Reason:ReplaceNotFound,Message:Couldn't find replace ignition test-namespace/test-ignition-replace,}"))
+				})
+
+				It("when an IgnitionV3 with target secret is replaced with existing IgnitionV3, should create a secret with replaced config", func() {
+					ign.Spec.Config.Ignition.Config.Replace = &v1.LocalObjectReference{Name: replaceName}
+					ign.Spec.Config.Ignition.Config.Merge = nil
+					Expect(k8sClient.Create(ctx, ign)).To(Succeed())
+					Expect(k8sClient.Create(ctx, replaceIgn)).To(Succeed())
+
+					controller := &IgnitionV3Reconciler{Client: k8sClient, Scheme: k8sClient.Scheme()}
+					_, err := controller.Reconcile(ctx, reconcile.Request{NamespacedName: nn})
+					Expect(err).NotTo(HaveOccurred())
+
+					Expect(k8sClient.Get(ctx, secretNn, secret)).To(Succeed())
+					Expect(secret.Data[secretConfigData]).To(Equal([]byte(`{"ignition":{"config":{"replace":{"verification":{}}},"proxy":{},"security":{"tls":{}},"timeouts":{},"version":"3.5.0"},"kernelArguments":{"shouldExist":["replace ignition value"]},"passwd":{"groups":[{"name":"replace ignition value"}]},"storage":{},"systemd":{}}`)))
+				})
+
+				It("when an IgnitionV3 collected with merge is replaced with existing IgnitionV3, should create a secret with replaced config", func() {
+					ign3.Spec.Config.Ignition.Config.Replace = &v1.LocalObjectReference{Name: replaceName}
+					Expect(k8sClient.Create(ctx, ign)).To(Succeed())
+					Expect(k8sClient.Create(ctx, ign2)).To(Succeed())
+					Expect(k8sClient.Create(ctx, ign3)).To(Succeed())
+					Expect(k8sClient.Create(ctx, replaceIgn)).To(Succeed())
+
+					controller := &IgnitionV3Reconciler{Client: k8sClient, Scheme: k8sClient.Scheme()}
+					_, err := controller.Reconcile(ctx, reconcile.Request{NamespacedName: client.ObjectKeyFromObject(ign3)})
+					Expect(err).NotTo(HaveOccurred())
+					_, err = controller.Reconcile(ctx, reconcile.Request{NamespacedName: nn})
+					Expect(err).NotTo(HaveOccurred())
+
+					Expect(k8sClient.Get(ctx, secretNn, secret)).To(Succeed())
+					Expect(secret.Data[secretConfigData]).To(Equal([]byte(`{"ignition":{"config":{"replace":{"verification":{}}},"proxy":{},"security":{"tls":{}},"timeouts":{},"version":"3.5.0"},"kernelArguments":{"shouldExist":["ignition-1 value","replace ignition value"],"shouldNotExist":["ignition-2 value"]},"passwd":{"groups":[{"name":"replace ignition value"}]},"storage":{},"systemd":{}}`)))
+				})
 			})
 		})
 	})
