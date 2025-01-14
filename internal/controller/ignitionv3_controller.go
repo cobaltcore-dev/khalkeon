@@ -109,7 +109,7 @@ func (r *IgnitionV3Reconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 		return ctrl.Result{}, nil
 	}
 
-	ignitions := map[string]bool{}
+	ignitions := map[string]struct{}{}
 	mergedConfig, err := r.createMergedConfig(ctx, ignition, ignitions)
 	if err != nil {
 		return ctrl.Result{}, fmt.Errorf("couldn't create merged configuration: %w", err)
@@ -187,11 +187,11 @@ func (r *IgnitionV3Reconciler) patchStatusIfNeeded(ctx context.Context, ignition
 	return nil
 }
 
-func (r *IgnitionV3Reconciler) createMergedConfig(ctx context.Context, ign *metalv1alpha1.IgnitionV3, collectedIgns map[string]bool) (ignitiontypes.Config, error) {
-	if collectedIgns[ign.Name] {
+func (r *IgnitionV3Reconciler) createMergedConfig(ctx context.Context, ign *metalv1alpha1.IgnitionV3, collectedIgns map[string]struct{}) (ignitiontypes.Config, error) {
+	if _, isIgnCollected := collectedIgns[ign.Name]; isIgnCollected {
 		return ignitiontypes.Config{}, fmt.Errorf("loop with %s", client.ObjectKeyFromObject(ign).String())
 	}
-	collectedIgns[ign.Name] = true
+	collectedIgns[ign.Name] = struct{}{}
 
 	if ign.Spec.Config.Ignition.Config.Replace != nil {
 		nn := types.NamespacedName{Name: ign.Spec.Config.Ignition.Config.Replace.Name, Namespace: ign.Namespace}
@@ -285,15 +285,18 @@ func (r *IgnitionV3Reconciler) reconcileSecret(ctx context.Context, ignition *me
 	return err
 }
 
-func (r *IgnitionV3Reconciler) patchTargetIgnitionsStatus(ctx context.Context, ignitions map[string]bool, targetIgnition *metalv1alpha1.IgnitionV3) error {
+func (r *IgnitionV3Reconciler) patchTargetIgnitionsStatus(ctx context.Context, ignitions map[string]struct{}, targetIgnition *metalv1alpha1.IgnitionV3) error {
 	ignitionList := &metalv1alpha1.IgnitionV3List{}
 	if err := r.List(ctx, ignitionList, &client.ListOptions{Namespace: targetIgnition.Namespace}); err != nil {
 		return err
 	}
 
 	for _, ignition := range ignitionList.Items {
+		if _, wasIgnitionUsedForMerging := ignitions[ignition.Name]; !wasIgnitionUsedForMerging {
+			continue
+		}
 		ref := corev1.LocalObjectReference{Name: targetIgnition.Name}
-		if !ignitions[ignition.Name] || ignition.Name == targetIgnition.Name || slices.Contains(ignition.Status.TargetIgnitions, ref) {
+		if ignition.Name == targetIgnition.Name || slices.Contains(ignition.Status.TargetIgnitions, ref) {
 			continue
 		}
 		ignitionBase := ignition.DeepCopy()
