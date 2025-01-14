@@ -66,7 +66,7 @@ var _ = Describe("IgnitionV3 Controller", func() {
 		})
 
 		When("Ignition doesn't have target secret", func() {
-			It("when configuration is valid, should update status ", func() {
+			It("when configuration is valid, should update status", func() {
 				ign.Spec.Config.Ignition.Version = validConfigVersion
 				Expect(k8sClient.Create(ctx, ign)).To(Succeed())
 
@@ -78,7 +78,7 @@ var _ = Describe("IgnitionV3 Controller", func() {
 				Expect(meta.IsStatusConditionTrue(ign.Status.Conditions, metalv1alpha1.ConfigurationType)).To(BeTrue())
 			})
 
-			It("when configuration is invalid, should update status ", func() {
+			It("when configuration is invalid, should update status", func() {
 				ign.Spec.Config.Ignition.Version = "invalid"
 				Expect(k8sClient.Create(ctx, ign)).To(Succeed())
 
@@ -208,8 +208,7 @@ var _ = Describe("IgnitionV3 Controller", func() {
 
 					controller := &IgnitionV3Reconciler{Client: k8sClient, Scheme: k8sClient.Scheme()}
 					_, err := controller.Reconcile(ctx, reconcile.Request{NamespacedName: nn})
-					Expect(err.Error()).To(HavePrefix("couldn't replace ignitions: ignition to replace test-namespace/test-ignition must have status configuration condition set to true, condition: &Condition{Type:Configuration,Status:False"))
-					Expect(err.Error()).To(HaveSuffix("Reason:ReplaceNotFound,Message:Couldn't find replace ignition test-namespace/test-ignition-replace,}"))
+					Expect(err.Error()).To(Equal(`couldn't create merged configuration: couldn't get ignition. Reason: ignitionv3s.metal.cobaltcore.dev "test-ignition-replace" not found`))
 				})
 
 				It("when an IgnitionV3 with target secret is replaced with existing IgnitionV3, should create a secret with replaced config", func() {

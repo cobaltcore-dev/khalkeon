@@ -194,11 +194,12 @@ func (r *IgnitionV3Reconciler) createMergedConfig(ctx context.Context, ign *meta
 	collectedIgns[ign.Name] = struct{}{}
 
 	if ign.Spec.Config.Ignition.Config.Replace != nil {
+		replaceIng := &metalv1alpha1.IgnitionV3{}
 		nn := types.NamespacedName{Name: ign.Spec.Config.Ignition.Config.Replace.Name, Namespace: ign.Namespace}
-		if err := r.Client.Get(ctx, nn, ign); err != nil {
+		if err := r.Client.Get(ctx, nn, replaceIng); err != nil {
 			return ignitiontypes.Config{}, fmt.Errorf("couldn't get ignition. Reason: %v", err)
 		}
-		return r.createMergedConfig(ctx, ign, collectedIgns)
+		return r.createMergedConfig(ctx, replaceIng, collectedIgns)
 	}
 
 	config, err := convert(ign.Spec)
