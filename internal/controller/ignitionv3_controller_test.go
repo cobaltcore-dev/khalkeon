@@ -21,7 +21,6 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	corev1 "k8s.io/api/core/v1"
-	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
@@ -190,7 +189,7 @@ var _ = Describe("IgnitionV3 Controller", func() {
 				})
 
 				It("when an IgnitionV3 has a replace loop, should update the IgnitionV3 status to false", func() {
-					replaceIgn.Spec.Config.Ignition.Config.Replace = &v1.LocalObjectReference{Name: replaceName}
+					replaceIgn.Spec.Config.Ignition.Config.Replace = &corev1.LocalObjectReference{Name: replaceName}
 					Expect(k8sClient.Create(ctx, replaceIgn)).To(Succeed())
 
 					controller := &IgnitionV3Reconciler{Client: k8sClient, Scheme: k8sClient.Scheme()}
@@ -202,7 +201,7 @@ var _ = Describe("IgnitionV3 Controller", func() {
 				})
 
 				It("when an IgnitionV3 with target secret is replaced with non existing IgnitionV3, should return an error", func() {
-					ign.Spec.Config.Ignition.Config.Replace = &v1.LocalObjectReference{Name: replaceName}
+					ign.Spec.Config.Ignition.Config.Replace = &corev1.LocalObjectReference{Name: replaceName}
 					ign.Spec.Config.Ignition.Config.Merge = nil
 					Expect(k8sClient.Create(ctx, ign)).To(Succeed())
 
@@ -212,7 +211,7 @@ var _ = Describe("IgnitionV3 Controller", func() {
 				})
 
 				It("when an IgnitionV3 with target secret is replaced with existing IgnitionV3, should create a secret with replaced config", func() {
-					ign.Spec.Config.Ignition.Config.Replace = &v1.LocalObjectReference{Name: replaceName}
+					ign.Spec.Config.Ignition.Config.Replace = &corev1.LocalObjectReference{Name: replaceName}
 					ign.Spec.Config.Ignition.Config.Merge = nil
 					Expect(k8sClient.Create(ctx, ign)).To(Succeed())
 					Expect(k8sClient.Create(ctx, replaceIgn)).To(Succeed())
@@ -226,7 +225,7 @@ var _ = Describe("IgnitionV3 Controller", func() {
 				})
 
 				It("when an IgnitionV3 collected with merge is replaced with existing IgnitionV3, should create a secret with replaced config", func() {
-					ign3.Spec.Config.Ignition.Config.Replace = &v1.LocalObjectReference{Name: replaceName}
+					ign3.Spec.Config.Ignition.Config.Replace = &corev1.LocalObjectReference{Name: replaceName}
 					Expect(k8sClient.Create(ctx, ign)).To(Succeed())
 					Expect(k8sClient.Create(ctx, ign2)).To(Succeed())
 					Expect(k8sClient.Create(ctx, ign3)).To(Succeed())
