@@ -132,29 +132,30 @@ func (r *IgnitionV3Reconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 }
 
 func (r *IgnitionV3Reconciler) patchSecretStatus(ctx context.Context, reconcileIgnition *metalv1alpha1.IgnitionV3, isIgnitionCreated bool) error {
-	if len(reconcileIgnition.Status.TargetIgnitions) != 0 || isIgnitionCreated {
-		ignitionList := &metalv1alpha1.IgnitionV3List{}
-		if err := r.List(ctx, ignitionList, &client.ListOptions{Namespace: reconcileIgnition.Namespace}); err != nil {
+	if len(reconcileIgnition.Status.TargetIgnitions) == 0 && !isIgnitionCreated {
+		return nil
+	}
+	ignitionList := &metalv1alpha1.IgnitionV3List{}
+	if err := r.List(ctx, ignitionList, &client.ListOptions{Namespace: reconcileIgnition.Namespace}); err != nil {
+		return err
+	}
+	condition := metav1.Condition{
+		Type:               metalv1alpha1.SecretType,
+		LastTransitionTime: metav1.Now(),
+		Status:             metav1.ConditionFalse,
+		Reason:             "MergeResourceChanged",
+	}
+	for _, ign := range ignitionList.Items {
+		if reconcileIgnition.Name != ign.Name && isIgnitionCreated && ign.Spec.TargetSecret != nil {
+			condition.Message = fmt.Sprintf("%s was created", client.ObjectKeyFromObject(reconcileIgnition).String())
+		} else if slices.ContainsFunc(reconcileIgnition.Status.TargetIgnitions,
+			func(ref corev1.LocalObjectReference) bool { return ref.Name == ign.Name }) {
+			condition.Message = fmt.Sprintf("%s has changed", client.ObjectKeyFromObject(reconcileIgnition).String())
+		} else {
+			continue
+		}
+		if err := r.patchStatusIfNeeded(ctx, &ign, condition); err != nil {
 			return err
-		}
-		condition := metav1.Condition{
-			Type:               metalv1alpha1.SecretType,
-			LastTransitionTime: metav1.Now(),
-			Status:             metav1.ConditionFalse,
-			Reason:             "MergeResourceChanged",
-		}
-		for _, ign := range ignitionList.Items {
-			if reconcileIgnition.Name != ign.Name && isIgnitionCreated && ign.Spec.TargetSecret != nil {
-				condition.Message = fmt.Sprintf("%s was created", client.ObjectKeyFromObject(reconcileIgnition).String())
-			} else if slices.ContainsFunc(reconcileIgnition.Status.TargetIgnitions,
-				func(ref corev1.LocalObjectReference) bool { return ref.Name == ign.Name }) {
-				condition.Message = fmt.Sprintf("%s has changed", client.ObjectKeyFromObject(reconcileIgnition).String())
-			} else {
-				continue
-			}
-			if err := r.patchStatusIfNeeded(ctx, &ign, condition); err != nil {
-				return err
-			}
 		}
 	}
 	return nil
