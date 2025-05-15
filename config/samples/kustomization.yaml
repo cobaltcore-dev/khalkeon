@@ -1,4 +1,6 @@
 ## Append samples of your project ##
 resources:
-- metal_v1alpha1_ignitionv3.yaml
+- ignition-a.yaml
+- ignition-b.yaml
+- target-ignition.yaml
 # +kubebuilder:scaffold:manifestskustomizesamples
