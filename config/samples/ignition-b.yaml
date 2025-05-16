@@ -1,14 +1,15 @@
+
 apiVersion: metal.cobaltcore.dev/v1alpha1
 kind: IgnitionV3
 metadata:
+  name: b
   labels:
     app.kubernetes.io/name: khalkeon
     app.kubernetes.io/managed-by: kustomize
-  name: ignitionv3-sample
+    merge: b
 spec:
   ignition:
-    version: "3.5.0"
-    config:
-      merge:
-        matchLabels:
-          merge: "true"
+    version: 3.5.0
+  passwd:
+    groups:
+      - name: b

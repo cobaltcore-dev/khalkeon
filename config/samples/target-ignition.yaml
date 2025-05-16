@@ -1,0 +1,25 @@
+apiVersion: metal.cobaltcore.dev/v1alpha1
+kind: IgnitionV3
+metadata:
+  name: target-ignition
+  labels:
+    app.kubernetes.io/name: khalkeon
+    app.kubernetes.io/managed-by: kustomize
+spec:
+  targetSecret:
+    name: target
+  ignition:
+    version: 3.5.0
+    config:
+      merge:
+        matchLabels:
+          merge: a
+        # matchExpressions:
+        # - key: merge
+        #   operator: In
+        #   values: [a, b]
+      # replace:
+      #   name: "a"
+  kernelArguments:
+    shouldExist: 
+      - target-ignition
