@@ -5,6 +5,8 @@
 domain: cobaltcore.dev
 layout:
 - go.kubebuilder.io/v4
+plugins:
+  helm.kubebuilder.io/v1-alpha: {}
 projectName: khalkeon
 repo: github.com/cobaltcore-dev/khalkeon
 resources:
