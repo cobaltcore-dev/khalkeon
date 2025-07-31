@@ -7,7 +7,7 @@ toolchain go1.24.5
 require (
 	github.com/coreos/ignition/v2 v2.22.0
 	github.com/onsi/ginkgo/v2 v2.23.4
-	github.com/onsi/gomega v1.36.3
+	github.com/onsi/gomega v1.38.0
 	k8s.io/api v0.33.3
 	k8s.io/apimachinery v0.33.3
 	k8s.io/client-go v0.33.3
